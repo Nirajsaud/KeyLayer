@@ -103,6 +103,9 @@ internal sealed class AppConfig
     /// <summary>Key held as a home-made Fn key (0 = off).</summary>
     public int CustomFnVk { get; set; }
 
+    /// <summary>"System", "Light" or "Dark".</summary>
+    public string Theme { get; set; } = "System";
+
     /// <summary>Names the user gave keyboards, by keyboard ID.</summary>
     public Dictionary<string, string> KeyboardNames { get; set; } = [];
 }

@@ -118,7 +118,7 @@ internal static unsafe class Native
     [DllImport("user32.dll")]
     public static extern uint GetRawInputBuffer(nint pData, ref uint pcbSize, uint cbSizeHeader);
 
-    public const ushort RI_KEY_BREAK = 0x01;
+    public const ushort RI_KEY_BREAK = 0x01, RI_KEY_E0 = 0x02;
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint GetRawInputDeviceList([In, Out] RAWINPUTDEVICELIST[]? list, ref uint count, uint size);

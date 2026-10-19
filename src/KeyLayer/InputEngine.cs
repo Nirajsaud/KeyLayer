@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Forms;
 
 namespace KeyLayer;
 
@@ -26,6 +27,9 @@ internal sealed record KeyboardInfo(string Id, string Product, string Connection
 /// media/launch keys come with a separate HID signal naming the keyboard, so they're held until it arrives;
 /// other keys are held back and their release is let through, because Windows does name the keyboard for the
 /// release. Either way the shortcut then runs, or the key is replayed for the other keyboards.
+/// While one of KeyLayer's own windows is active, Windows skips low-level keyboard hooks altogether (because this
+/// process listens to raw keyboard input), so keys are then read from raw input instead; see
+/// <see cref="AppInForeground"/>.
 /// </remarks>
 internal sealed unsafe class InputEngine : IDisposable
 {
@@ -59,6 +63,7 @@ internal sealed unsafe class InputEngine : IDisposable
     readonly List<ReleaseWait> releaseWaits = [];
     readonly List<PendingObservation> observations = [];
     readonly HashSet<(ushort Page, ushort Usage)> registered = [];
+    readonly HashSet<(nint Device, int Vk)> rawHeld = [];
     Thread? thread;
     uint threadId;
     MessageWindow? window;
@@ -70,7 +75,8 @@ internal sealed unsafe class InputEngine : IDisposable
     volatile Dictionary<string, string> names = new(StringComparer.OrdinalIgnoreCase);
     Capture? capture;
     bool builtInPresent;
-    bool fnHeld, fnUsed;
+    bool fnHeld, fnUsed, rawFnHeld;
+    volatile bool appInForeground;
     string? lastActiveKeyboard;
     int lastActivityTick;
 
@@ -79,6 +85,24 @@ internal sealed unsafe class InputEngine : IDisposable
 
     /// <summary>Key held as a home-made Fn key (0 = off).</summary>
     public volatile int CustomFnVk;
+
+    /// <summary>
+    /// Set while one of KeyLayer's windows is active. Windows doesn't call keyboard hooks then, so keys are taken
+    /// from raw input: they still name their keyboard, but can't be switched off.
+    /// </summary>
+    public bool AppInForeground
+    {
+        get => appInForeground;
+        set
+        {
+            appInForeground = value;
+            Post(() =>
+            {
+                rawHeld.Clear();
+                rawFnHeld = false;
+            });
+        }
+    }
 
     public string? StartError { get; private set; }
 
@@ -485,11 +509,12 @@ internal sealed unsafe class InputEngine : IDisposable
 
         if (header.dwType == Native.RIM_TYPEKEYBOARD)
         {
+            ushort makeCode = *(ushort*)body;
             ushort flags = *(ushort*)(body + 2);
             ushort vkey = *(ushort*)(body + 6);
             uint extra = *(uint*)(body + 12);
             if (extra == (uint)InputSender.Marker) return; // our own keystrokes
-            OnRawKey(header.hDevice, vkey, (flags & Native.RI_KEY_BREAK) == 0);
+            OnRawKey(header.hDevice, SideSpecificVk(vkey, makeCode, flags), (flags & Native.RI_KEY_BREAK) == 0);
         }
         else if (header.dwType == Native.RIM_TYPEHID)
         {
@@ -506,10 +531,25 @@ internal sealed unsafe class InputEngine : IDisposable
         }
     }
 
+    /// <summary>Raw input reports plain Shift/Ctrl/Alt; tell left from right like the hook does.</summary>
+    static int SideSpecificVk(int vkey, int makeCode, ushort flags) => vkey switch
+    {
+        0x10 => makeCode == 0x36 ? 0xA1 : 0xA0,
+        0x11 => (flags & Native.RI_KEY_E0) != 0 ? 0xA3 : 0xA2,
+        0x12 => (flags & Native.RI_KEY_E0) != 0 ? 0xA5 : 0xA4,
+        _ => vkey,
+    };
+
     void OnRawKey(nint handle, int rawVk, bool down)
     {
         var keyboard = KeyboardFor(handle);
         if (keyboard is not null) NoteActivity(keyboard);
+
+        if (appInForeground)
+        {
+            OnRawKeyInForeground(handle, keyboard, rawVk, down);
+            return;
+        }
 
         int vk = KeyNames.Normalize(rawVk);
         string name = keyboard is not null ? NameOf(keyboard) : handle == 0 ? "Simulated input" : "Unknown keyboard";
@@ -533,6 +573,63 @@ internal sealed unsafe class InputEngine : IDisposable
             row.Trigger.KeyboardName ??= keyboard is null ? null : name;
             Raise(row.ToObserved(name));
         }
+    }
+
+    /// <summary>
+    /// Keys while a KeyLayer window is active (the hook isn't called then): feed the Key monitor and key capture,
+    /// and run shortcuts, all knowing the keyboard. Keys can't be switched off here.
+    /// </summary>
+    void OnRawKeyInForeground(nint handle, KeyboardInfo? keyboard, int vk, bool down)
+    {
+        if (down ? !rawHeld.Add((handle, vk)) : !rawHeld.Remove((handle, vk)) && !KeyNames.IsModifier(vk))
+            return; // auto-repeat, or a release we never saw pressed
+
+        int fnVk = CustomFnVk;
+        if (fnVk != 0 && vk == fnVk)
+        {
+            rawFnHeld = down;
+            return;
+        }
+
+        if (!down)
+        {
+            // A modifier pressed and released on its own during capture is the captured key itself.
+            if (capture is { Key: null, Consumer: null, Other: null } lone && lone.ModifiersPressed.Contains(vk))
+            {
+                lone.Key = WithKeyboard(Trigger.ForKey(vk, 0), handle, keyboard);
+                ArmCapture();
+            }
+            if (capture is { Key: { } key } c && key.Vk == vk) c.KeyUpTick = Environment.TickCount;
+            return;
+        }
+
+        int mods = CurrentModifiers(rawFnHeld ? fnVk : 0) & ~KeyNames.ModFlag(vk);
+        if (rawFnHeld && !KeyNames.IsModifier(vk)) mods |= KeyNames.Fn;
+        var trigger = WithKeyboard(Trigger.ForKey(vk, mods), handle, keyboard);
+
+        if (MonitorEnabled)
+            Raise(new ObservedInput(DateTime.Now, "Key", $"Key code 0x{vk:X2}", trigger.Description, trigger.KeyboardName!, trigger));
+
+        if (capture is { } cap)
+        {
+            if (KeyNames.IsModifier(vk)) cap.ModifiersPressed.Add(vk);
+            else
+            {
+                cap.Key ??= trigger;
+                ArmCapture();
+            }
+        }
+        else if (!Paused && Lookup(vk, mods, trigger.Keyboard) is { } m)
+        {
+            Fire(m, mask: false);
+        }
+    }
+
+    Trigger WithKeyboard(Trigger t, nint handle, KeyboardInfo? keyboard)
+    {
+        t.Keyboard = keyboard?.Id;
+        t.KeyboardName = keyboard is not null ? NameOf(keyboard) : handle == 0 ? "Simulated input" : "Unknown keyboard";
+        return t;
     }
 
     void OnHidReport(HidDevice device, byte[] report)

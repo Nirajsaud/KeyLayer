@@ -25,13 +25,10 @@ internal static class Program
             return 0;
         }
 
-        ApplicationConfiguration.Initialize();
-        SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
-        Application.ThreadException += (_, e) =>
-            MessageBox.Show(e.Exception.Message, "KeyLayer", MessageBoxButtons.OK, MessageBoxIcon.Error);
-
-        using var app = new TrayApp(startHidden: args.Contains("--tray"));
-        Application.Run(app);
+        var app = new App { StartHidden = args.Contains("--tray") };
+        app.InitializeComponent();
+        app.Run();
+        GC.KeepAlive(mutex);
         return 0;
     }
 

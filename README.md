@@ -14,9 +14,10 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
   tap it alone and it works as normal.
 - **Actions:** open an app, file, folder or website · press a key combination · type text · media and volume ·
   screen brightness · lock / sleep · screenshot, show desktop, task view and more · run a command · switch a key off.
-- **Key monitor** that shows exactly what each key press sends, and from which keyboard.
+- **Test keys** page that shows exactly what each key press sends, and from which keyboard.
 
-It runs quietly in the system tray. Settings are saved in `%APPDATA%\KeyLayer\config.json`.
+It runs quietly in the system tray. The window follows the Windows 11 look and your light/dark and accent settings.
+Settings are saved in `%APPDATA%\KeyLayer\config.json`.
 
 ## Requirements
 
@@ -25,19 +26,19 @@ It runs quietly in the system tray. Settings are saved in `%APPDATA%\KeyLayer\co
 
 ## Getting started
 
-1. Open the **Key monitor** tab and press your Fn combos one by one.
+1. Open **Test keys** and press your Fn combos one by one.
    - Anything that shows up there can be remapped.
    - Combos that show **nothing** are handled inside the keyboard itself (usually backlight or lighting controls),
      and no app can change them.
-2. On **Shortcuts**, click **Add shortcut…**, then **Capture key**, and press the key or combo.
+2. On **Shortcuts**, click **Add shortcut**, click the key box and press the key or combo.
 3. Pick a keyboard (or *Any keyboard*) and choose what it should do.
 
-To make your own Fn key, open the **Keyboards** tab and set **Custom Fn key**. Then capture shortcuts while holding it.
+To make your own Fn key, open **Settings** and pick a **Custom Fn key**. Then capture shortcuts while holding it.
 
 ## Good to know
 
 - Windows never sees the Fn key itself; the keyboard handles it and sends a different signal instead. That's why only
-  combos that show up in the Key monitor can be remapped.
+  combos that show up on the Test keys page can be remapped.
 - All keyboards are detected at startup. A laptop's own keyboard and its hotkey devices are grouped as one
   **Built-in keyboard**. Mouse dongles that can also send keys are listed as **receivers**.
 - The same key can do different things on different keyboards. Windows only says which keyboard a key came from when
@@ -46,6 +47,8 @@ To make your own Fn key, open the **Keyboards** tab and set **Custom Fn key**. T
   - On the other keyboards that key keeps its normal job, also on release, and holding it won't auto-repeat.
   - **Media and launch keys** (volume, play/pause, Mail, Calculator, browser keys) carry their own signal naming the
     keyboard, so they react right away.
+- While KeyLayer's own window is active, Windows doesn't let it switch keys off, so shortcuts still run but the key
+  also does its normal job. Everywhere else they work as set.
 - Shortcuts don't fire while an app running as administrator is in front, unless KeyLayer also runs as administrator.
 
 ## Building
