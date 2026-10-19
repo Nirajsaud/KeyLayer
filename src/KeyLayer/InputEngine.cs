@@ -7,7 +7,13 @@ namespace KeyLayer;
 internal sealed record ObservedInput(DateTime Time, string Source, string Signal, string Meaning, string Device, Trigger Trigger);
 
 /// <summary>A keyboard Windows knows about. <see cref="Product"/> is what the device calls itself.</summary>
-internal sealed record KeyboardInfo(string Id, string Product, string Connection, bool External);
+internal sealed record KeyboardInfo(string Id, string Product, string Connection, bool External)
+{
+    /// <summary>Everything built into the PC (laptop keyboard, its hotkey devices) counts as one keyboard.</summary>
+    public static readonly KeyboardInfo BuiltIn = new(RawDevices.BuiltInId, "", "Built-in", false);
+
+    public bool IsReceiver => Connection.EndsWith("receiver", StringComparison.Ordinal);
+}
 
 /// <summary>
 /// Runs a dedicated input thread with a low-level keyboard hook (catches keys and can swallow them) and raw input
@@ -15,23 +21,30 @@ internal sealed record KeyboardInfo(string Id, string Product, string Connection
 /// against the shortcut table and fires actions. Keeping this off the UI thread means a busy window never lags typing.
 /// </summary>
 /// <remarks>
-/// Windows runs the hook before it says which keyboard a key came from, and a key the hook swallows is never
-/// reported at all. So a shortcut limited to one keyboard works like this:
-/// media/launch keys come with a separate HID signal naming the keyboard, so they're held until it arrives and then
-/// either run the shortcut or are let through; ordinary keys run the shortcut once Windows names the keyboard, but
-/// can't be switched off for just one keyboard.
+/// Windows runs the hook before it says which keyboard a key came from, and a key-down the hook swallows is never
+/// reported at all. So when a key has a shortcut limited to one keyboard:
+/// media/launch keys come with a separate HID signal naming the keyboard, so they're held until it arrives;
+/// other keys are held back and their release is let through, because Windows does name the keyboard for the
+/// release. Either way the shortcut then runs, or the key is replayed for the other keyboards.
 /// </remarks>
 internal sealed unsafe class InputEngine : IDisposable
 {
     const int WM_RUN_QUEUE = Native.WM_APP + 1;
     const nuint SettleTimer = 1, CaptureTimeoutTimer = 2, DeviceTimer = 3, ResolveTimer = 4;
-    const uint SettleMs = 350;            // after the first signal of a capture, wait for related ones (key + HID often both arrive)
+    const int SettleMs = 350;             // after the first signal of a capture, wait for related ones (key + HID often both arrive)
+    const int CaptureReleaseMs = 4000;    // how long a capture waits for the key's release to learn its keyboard
     const uint RepeatWindowMs = 1500;     // a key-down within this time of the last one for the same key is auto-repeat
     const int MediaWindowMs = 300;        // how long a media signal can name the keyboard of a key code
     const int DeferMs = 250;              // how long a held media key waits to learn its keyboard
-    const int CheckMs = 500;              // how long an ordinary key waits for Windows to name its keyboard
-    const int ObservationMs = 300;        // how long a Key monitor row waits for the keyboard's name
+    const int ReleaseMs = 500;            // how long a released key waits for Windows to name its keyboard
+    const int ObservationMs = 1500;       // how long a Key monitor row waits for the keyboard's name
     const int RawBufferSize = 64 * 1024;
+
+    enum KeyAction { Pass, Block, BlockUntilRelease }
+    enum KeyRelease { Normal, Decide, Pass }
+
+    /// <summary>What was decided when a key went down, so repeats and the release follow suit.</summary>
+    readonly record struct HeldKey(uint Time, bool Blocked, KeyRelease Release, int Mods, bool WinOrAlt);
 
     readonly SynchronizationContext ui;
     readonly ConcurrentQueue<Action> queue = new();
@@ -39,11 +52,11 @@ internal sealed unsafe class InputEngine : IDisposable
     readonly Dictionary<nint, HidDevice> devices = [];
     readonly Dictionary<nint, KeyboardInfo?> keyboardHandles = [];
     readonly Dictionary<string, KeyboardInfo> externalKeyboards = new(StringComparer.OrdinalIgnoreCase);
-    readonly Dictionary<string, KeyboardInfo> usedBuiltIns = new(StringComparer.OrdinalIgnoreCase);
-    readonly Dictionary<int, (uint Time, bool Blocked)> held = [];
+    readonly HashSet<string> mouseIds = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<int, HeldKey> held = [];
     readonly List<MediaSignal> recentMedia = [];
     readonly List<Deferred> deferred = [];
-    readonly List<PendingCheck> checks = [];
+    readonly List<ReleaseWait> releaseWaits = [];
     readonly List<PendingObservation> observations = [];
     readonly HashSet<(ushort Page, ushort Usage)> registered = [];
     Thread? thread;
@@ -56,6 +69,7 @@ internal sealed unsafe class InputEngine : IDisposable
     volatile HashSet<string> keyboardSpecific = [];
     volatile Dictionary<string, string> names = new(StringComparer.OrdinalIgnoreCase);
     Capture? capture;
+    bool builtInPresent;
     bool fnHeld, fnUsed;
     string? lastActiveKeyboard;
     int lastActivityTick;
@@ -68,7 +82,7 @@ internal sealed unsafe class InputEngine : IDisposable
 
     public string? StartError { get; private set; }
 
-    /// <summary>External keyboards, plus built-in ones once they've been typed on.</summary>
+    /// <summary>External keyboards, the built-in keyboard, then receivers (mouse dongles that can send keys).</summary>
     public IReadOnlyList<KeyboardInfo> Keyboards { get; private set; } = [];
     public IReadOnlyList<string> Listening { get; private set; } = [];
 
@@ -111,12 +125,14 @@ internal sealed unsafe class InputEngine : IDisposable
 
     public string NameOf(KeyboardInfo keyboard) =>
         names.TryGetValue(keyboard.Id, out var name) && name.Length > 0 ? name
-        : keyboard.External ? (keyboard.Product.Length > 0 ? keyboard.Product : $"{keyboard.Connection} keyboard")
-        : keyboard.Product.Length > 0 ? $"Built-in keyboard ({keyboard.Product})" : "Built-in keyboard";
+        : !keyboard.External ? "Built-in keyboard"
+        : keyboard.Product.Length > 0 ? keyboard.Product
+        : $"{keyboard.Connection} keyboard";
 
     public string NameOf(string id, string? fallback) =>
         names.TryGetValue(id, out var name) && name.Length > 0 ? name
         : Keyboards.FirstOrDefault(k => string.Equals(k.Id, id, StringComparison.OrdinalIgnoreCase)) is { } known ? NameOf(known)
+        : id == RawDevices.BuiltInId ? "Built-in keyboard"
         : fallback ?? id;
 
     /// <summary>
@@ -235,7 +251,7 @@ internal sealed unsafe class InputEngine : IDisposable
                 if (k.dwExtraInfo != InputSender.Marker)
                 {
                     bool down = wParam == Native.WM_KEYDOWN || wParam == Native.WM_SYSKEYDOWN;
-                    if (OnKey(k, down)) return 1;
+                    if (down ? OnKeyDown(k) : OnKeyUp(k)) return 1;
                 }
             }
             catch
@@ -246,32 +262,15 @@ internal sealed unsafe class InputEngine : IDisposable
         return Native.CallNextHookEx(hook, nCode, wParam, lParam);
     }
 
-    /// <summary>Returns true to swallow the key event.</summary>
-    bool OnKey(in Native.KBDLLHOOKSTRUCT k, bool down)
+    /// <summary>Returns true to swallow the key-down.</summary>
+    bool OnKeyDown(in Native.KBDLLHOOKSTRUCT k)
     {
         int vk = (int)k.vkCode;
         int fnVk = CustomFnVk;
 
-        if (!down)
-        {
-            // A modifier pressed and released on its own during capture is the captured key itself.
-            if (capture is { Key: null, Consumer: null, Other: null } c && c.ModifiersPressed.Contains(vk) && vk != fnVk)
-            {
-                c.Key = Trigger.ForKey(vk, 0);
-                ArmCapture();
-            }
-            bool wasBlocked = held.Remove(vk, out var h) && h.Blocked;
-            if (vk == fnVk && fnHeld)
-            {
-                fnHeld = false;
-                if (!fnUsed && wasBlocked) Replay(vk); // tapped on its own: e.g. Caps Lock still toggles
-            }
-            return wasBlocked;
-        }
-
         if (held.TryGetValue(vk, out var previous) && unchecked(k.time - previous.Time) < RepeatWindowMs)
         {
-            held[vk] = (k.time, previous.Blocked); // auto-repeat: same decision as the first press
+            held[vk] = previous with { Time = k.time }; // auto-repeat: same decision as the first press
             return previous.Blocked;
         }
 
@@ -283,7 +282,7 @@ internal sealed unsafe class InputEngine : IDisposable
             fnHeld = true;
             fnUsed = false;
             bool swallow = !KeyNames.IsModifier(vk);
-            held[vk] = (k.time, swallow);
+            held[vk] = new HeldKey(k.time, swallow, KeyRelease.Normal, 0, false);
             return swallow;
         }
 
@@ -304,31 +303,72 @@ internal sealed unsafe class InputEngine : IDisposable
 
         if (MonitorEnabled) Observe(k, trigger);
 
-        bool block = false;
+        KeyAction action;
+        KeyRelease release = KeyRelease.Normal;
         if (capture is { } cap)
         {
             if (KeyNames.IsModifier(vk))
             {
                 cap.ModifiersPressed.Add(vk);
+                action = KeyAction.Pass;
             }
             else
             {
                 cap.Key ??= trigger;
                 ArmCapture();
-                block = true;
+                action = KeyAction.Block;
+                release = KeyRelease.Pass; // its release tells us which keyboard it came from
             }
         }
-        else if (!Paused)
+        else
         {
-            block = Decide(vk, mods, trigger.Keyboard, winOrAltDown);
+            action = Paused ? KeyAction.Pass : Decide(vk, mods, trigger.Keyboard, winOrAltDown);
+            if (action == KeyAction.BlockUntilRelease) release = KeyRelease.Decide;
         }
 
-        held[vk] = (k.time, block);
+        bool block = action != KeyAction.Pass;
+        held[vk] = new HeldKey(k.time, block, release, mods, winOrAltDown);
         return block;
     }
 
-    /// <summary>Picks and fires the shortcut for a key press. Returns true to swallow the key.</summary>
-    bool Decide(int vk, int mods, string? keyboard, bool winOrAltDown)
+    /// <summary>Returns true to swallow the key-up.</summary>
+    bool OnKeyUp(in Native.KBDLLHOOKSTRUCT k)
+    {
+        int vk = (int)k.vkCode;
+
+        // A modifier pressed and released on its own during capture is the captured key itself.
+        if (capture is { Key: null, Consumer: null, Other: null } c && c.ModifiersPressed.Contains(vk) && vk != CustomFnVk)
+        {
+            c.Key = Trigger.ForKey(vk, 0);
+            ArmCapture();
+        }
+
+        bool found = held.Remove(vk, out var h);
+        if (vk == CustomFnVk && fnHeld)
+        {
+            fnHeld = false;
+            if (!fnUsed && found && h.Blocked) Replay(vk); // tapped on its own: e.g. Caps Lock still toggles
+            return found && h.Blocked;
+        }
+        if (!found) return false;
+
+        switch (h.Release)
+        {
+            case KeyRelease.Decide:
+                // Let the release through: Windows will say which keyboard it came from.
+                releaseWaits.Add(new ReleaseWait(vk, h.Mods, h.WinOrAlt, Environment.TickCount));
+                StartResolveTimer();
+                return false;
+            case KeyRelease.Pass:
+                if (capture is { Key: { } key } cap && key.Vk == vk) cap.KeyUpTick = Environment.TickCount;
+                return false;
+            default:
+                return h.Blocked;
+        }
+    }
+
+    /// <summary>Picks and fires the shortcut for a key press.</summary>
+    KeyAction Decide(int vk, int mods, string? keyboard, bool winOrAltDown)
     {
         var t = table;
         var anyKeyboard = t.GetValueOrDefault(Trigger.KeyMatch(vk, mods));
@@ -340,28 +380,24 @@ internal sealed unsafe class InputEngine : IDisposable
             return FireAndBlock(anyKeyboard, winOrAltDown);
 
         // A shortcut on this key is limited to one keyboard, but Windows hasn't said which keyboard this is yet.
-        int now = Environment.TickCount;
         if (KeyNames.HasMediaSignal(vk))
         {
             // Media/launch keys come with a HID signal naming the keyboard: hold the key until it arrives.
-            deferred.Add(new Deferred(vk, mods, now));
+            deferred.Add(new Deferred(vk, mods, Environment.TickCount));
             StartResolveTimer();
-            return true;
+            return KeyAction.Block;
         }
 
-        // Ordinary keys are only named after they've been delivered, so they can't be switched off per keyboard.
-        if (anyKeyboard is { BlockOriginal: true }) return FireAndBlock(anyKeyboard, winOrAltDown);
-        checks.Add(new PendingCheck(vk, mods, now));
-        StartResolveTimer();
-        return false;
+        // Other keys: hold the key back and decide when it's released (the release names the keyboard).
+        return KeyAction.BlockUntilRelease;
     }
 
-    bool FireAndBlock(Mapping? m, bool winOrAltDown)
+    KeyAction FireAndBlock(Mapping? m, bool winOrAltDown)
     {
-        if (m is null) return false;
+        if (m is null) return KeyAction.Pass;
         // Swallowing a key while Win/Alt is held would make Windows open Start / a menu bar on release.
         Fire(m, mask: m.BlockOriginal && winOrAltDown);
-        return m.BlockOriginal;
+        return m.BlockOriginal ? KeyAction.Block : KeyAction.Pass;
     }
 
     Mapping? Lookup(int vk, int mods, string? keyboard)
@@ -379,10 +415,12 @@ internal sealed unsafe class InputEngine : IDisposable
         if (m is null || !m.BlockOriginal) Replay(d.Vk);
     }
 
-    void ResolveCheck(PendingCheck c, string? keyboard)
+    void ResolveRelease(ReleaseWait w, string? keyboard)
     {
-        checks.Remove(c);
-        if (Lookup(c.Vk, c.Mods, keyboard) is { } m) Fire(m, mask: false);
+        releaseWaits.Remove(w);
+        var m = Lookup(w.Vk, w.Mods, keyboard);
+        if (m is not null) Fire(m, mask: m.BlockOriginal && w.WinOrAlt);
+        if (m is null || !m.BlockOriginal) Replay(w.Vk); // another keyboard: the key does its normal job
     }
 
     void Observe(in Native.KBDLLHOOKSTRUCT k, Trigger trigger)
@@ -458,7 +496,7 @@ internal sealed unsafe class InputEngine : IDisposable
             var device = GetDevice(header.hDevice);
             if (device is null) return;
             // Vendor channels are only interesting on keyboards (other devices can be chatty).
-            if (device.UsagePage >= 0xFF00 && !externalKeyboards.ContainsKey(device.VidPid)) return;
+            if (device.UsagePage >= 0xFF00 && !externalKeyboards.ContainsKey(device.KeyboardId)) return;
 
             int reportSize = *(int*)body;
             int count = *(int*)(body + 4);
@@ -472,11 +510,22 @@ internal sealed unsafe class InputEngine : IDisposable
     {
         var keyboard = KeyboardFor(handle);
         if (keyboard is not null) NoteActivity(keyboard);
-        if (!down) return;
 
         int vk = KeyNames.Normalize(rawVk);
         string name = keyboard is not null ? NameOf(keyboard) : handle == 0 ? "Simulated input" : "Unknown keyboard";
 
+        if (!down)
+        {
+            if (releaseWaits.FirstOrDefault(w => KeyNames.Normalize(w.Vk) == vk) is { } wait)
+                ResolveRelease(wait, keyboard?.Id);
+            if (keyboard is not null && capture is { Key: { Keyboard: null } key } && KeyNames.Normalize(key.Vk) == vk)
+            {
+                key.Keyboard = keyboard.Id;
+                key.KeyboardName = name;
+            }
+        }
+
+        // Key monitor rows waiting for the keyboard's name (a key held back is only named when released).
         if (observations.FirstOrDefault(o => o.Vk == vk) is { } row)
         {
             observations.Remove(row);
@@ -484,8 +533,6 @@ internal sealed unsafe class InputEngine : IDisposable
             row.Trigger.KeyboardName ??= keyboard is null ? null : name;
             Raise(row.ToObserved(name));
         }
-        if (checks.FirstOrDefault(c => KeyNames.Normalize(c.Vk) == vk) is { } check)
-            ResolveCheck(check, keyboard?.Id);
     }
 
     void OnHidReport(HidDevice device, byte[] report)
@@ -494,7 +541,7 @@ internal sealed unsafe class InputEngine : IDisposable
         var signal = device.Decode(report);
         if (signal is null) return; // released
 
-        string keyboardName = NameOf(device.VidPid, device.DisplayName);
+        string keyboardName = NameOf(device.KeyboardId, device.DisplayName);
         var trigger = new Trigger
         {
             Kind = TriggerKind.Hid,
@@ -503,13 +550,13 @@ internal sealed unsafe class InputEngine : IDisposable
             Description = signal.Meaning,
             Signal = signal.Code,
             Device = device.DisplayName,
-            Keyboard = device.VidPid,
+            Keyboard = device.KeyboardId,
             KeyboardName = keyboardName,
         };
 
         foreach (var (page, usage) in signal.Usages)
             if (page == 0x0C && KeyNames.ConsumerToVk.TryGetValue(usage, out int vk))
-                OnMediaSignal(device.VidPid, keyboardName, vk);
+                OnMediaSignal(device.KeyboardId, keyboardName, vk);
 
         if (MonitorEnabled) Raise(new ObservedInput(DateTime.Now, "Signal", signal.Code, signal.Meaning, keyboardName, trigger));
 
@@ -527,7 +574,7 @@ internal sealed unsafe class InputEngine : IDisposable
 
     /// <summary>
     /// A media signal names the keyboard behind the key code Windows makes from it. The key code may already be
-    /// waiting (held key, unshown monitor row, pending check) or may arrive just after.
+    /// waiting (held key, unshown monitor row) or may arrive just after.
     /// </summary>
     void OnMediaSignal(string keyboard, string name, int vk)
     {
@@ -535,11 +582,6 @@ internal sealed unsafe class InputEngine : IDisposable
         if (deferred.FirstOrDefault(d => d.Vk == vk) is { } waiting)
         {
             ResolveDeferred(waiting, keyboard);
-            used = true;
-        }
-        if (checks.FirstOrDefault(c => c.Vk == vk) is { } check)
-        {
-            ResolveCheck(check, keyboard);
             used = true;
         }
         if (observations.FirstOrDefault(o => o.Vk == vk) is { } row)
@@ -591,9 +633,18 @@ internal sealed unsafe class InputEngine : IDisposable
         if (path.Length > 0)
         {
             var (id, connection, external) = RawDevices.KeyboardIdentity(path);
-            string product = external ? RawDevices.Product(path) : "";
-            if (product.Length == 0) product = RawDevices.Description(path);
-            keyboard = new KeyboardInfo(id, product, connection, external);
+            if (!external)
+            {
+                keyboard = KeyboardInfo.BuiltIn;
+            }
+            else
+            {
+                string product = RawDevices.Product(path);
+                if (product.Length == 0) product = RawDevices.Description(path);
+                // A dongle that is also a mouse: usually a mouse (or combo) receiver.
+                if (mouseIds.Contains(id)) connection += " receiver";
+                keyboard = new KeyboardInfo(id, product, connection, true);
+            }
         }
         keyboardHandles[handle] = keyboard;
         return keyboard;
@@ -601,8 +652,9 @@ internal sealed unsafe class InputEngine : IDisposable
 
     void NoteActivity(KeyboardInfo keyboard)
     {
-        if (keyboard.External ? externalKeyboards.TryAdd(keyboard.Id, keyboard) : usedBuiltIns.TryAdd(keyboard.Id, keyboard))
-            PublishKeyboards();
+        bool added = keyboard.External ? externalKeyboards.TryAdd(keyboard.Id, keyboard) : !builtInPresent;
+        builtInPresent |= !keyboard.External;
+        if (added) PublishKeyboards();
 
         int now = Environment.TickCount;
         if (keyboard.Id == lastActiveKeyboard && now - lastActivityTick < 1000) return;
@@ -614,7 +666,13 @@ internal sealed unsafe class InputEngine : IDisposable
 
     void PublishKeyboards()
     {
-        IReadOnlyList<KeyboardInfo> next = [.. externalKeyboards.Values.OrderBy(k => k.Product), .. usedBuiltIns.Values];
+        var external = externalKeyboards.Values.OrderBy(k => k.IsReceiver).ThenBy(k => k.Product).ToList();
+        IReadOnlyList<KeyboardInfo> next =
+        [
+            .. external.Where(k => !k.IsReceiver),
+            .. (builtInPresent ? new[] { KeyboardInfo.BuiltIn } : Array.Empty<KeyboardInfo>()),
+            .. external.Where(k => k.IsReceiver),
+        ];
         if (next.SequenceEqual(Keyboards)) return;
         Keyboards = next;
         ui.Post(_ => KeyboardsChanged?.Invoke(), null);
@@ -630,11 +688,20 @@ internal sealed unsafe class InputEngine : IDisposable
             devices.Remove(gone);
         }
 
+        mouseIds.Clear();
+        foreach (var d in list.Where(d => d.dwType == Native.RIM_TYPEMOUSE))
+            if (RawDevices.KeyboardIdentity(RawDevices.Name(d.hDevice)) is { External: true } mouse)
+                mouseIds.Add(mouse.Id);
+
         keyboardHandles.Clear(); // handles can be reused after a device is unplugged
         externalKeyboards.Clear();
+        builtInPresent = false;
         foreach (var d in list.Where(d => d.dwType == Native.RIM_TYPEKEYBOARD))
-            if (KeyboardFor(d.hDevice) is { External: true } keyboard)
-                externalKeyboards.TryAdd(keyboard.Id, keyboard);
+        {
+            if (KeyboardFor(d.hDevice) is not { } keyboard) continue;
+            if (keyboard.External) externalKeyboards.TryAdd(keyboard.Id, keyboard);
+            else builtInPresent = true;
+        }
 
         // Keyboards (to learn which one sent a key), media/consumer keys and system power keys from any device,
         // plus the vendor channels of external keyboards.
@@ -642,7 +709,7 @@ internal sealed unsafe class InputEngine : IDisposable
         foreach (var d in list.Where(d => d.dwType == Native.RIM_TYPEHID))
         {
             var device = GetDevice(d.hDevice);
-            if (device is { UsagePage: >= 0xFF00 } && externalKeyboards.ContainsKey(device.VidPid) && !wanted.Contains((device.UsagePage, device.Usage)))
+            if (device is { UsagePage: >= 0xFF00 } && externalKeyboards.ContainsKey(device.KeyboardId) && !wanted.Contains((device.UsagePage, device.Usage)))
                 wanted.Add((device.UsagePage, device.Usage));
         }
 
@@ -666,9 +733,23 @@ internal sealed unsafe class InputEngine : IDisposable
 
     void ArmCapture()
     {
-        if (capture is null || capture.Armed) return;
-        capture.Armed = true;
-        Native.SetTimer(window!.Handle, SettleTimer, SettleMs, 0);
+        if (capture is null || capture.ArmedTick != 0) return;
+        capture.ArmedTick = Environment.TickCount;
+        Native.SetTimer(window!.Handle, SettleTimer, 100, 0);
+    }
+
+    void OnSettleTick()
+    {
+        if (capture is not { } c) return;
+        int now = Environment.TickCount;
+        if (now - c.ArmedTick < SettleMs) return;
+
+        // For an ordinary key, wait for its release: that's when Windows says which keyboard it came from.
+        bool needsRelease = c.Key is { Keyboard: null } key && !KeyNames.HasMediaSignal(key.Vk);
+        bool releaseSettled = c.KeyUpTick != 0 && now - c.KeyUpTick > 300;
+        if (needsRelease && !releaseSettled && now - c.ArmedTick < CaptureReleaseMs) return;
+
+        FinishCapture(timedOut: false);
     }
 
     void FinishCapture(bool timedOut)
@@ -685,7 +766,7 @@ internal sealed unsafe class InputEngine : IDisposable
 
         // Prefer a key code (it can be swallowed), then a media/consumer signal, then anything else.
         var chosen = c.Key ?? c.Consumer ?? c.Other;
-        if (chosen == c.Key && c.Key is { Keyboard: null } key && TakeMediaSignal(key.Vk, (int)SettleMs + 200) is { } media)
+        if (chosen == c.Key && c.Key is { Keyboard: null } key && TakeMediaSignal(key.Vk, CaptureReleaseMs) is { } media)
         {
             key.Keyboard = media.Keyboard;
             key.KeyboardName = media.Name;
@@ -705,13 +786,13 @@ internal sealed unsafe class InputEngine : IDisposable
     {
         int now = Environment.TickCount;
         foreach (var d in deferred.Where(d => now - d.Tick >= DeferMs).ToList()) ResolveDeferred(d, null);
-        foreach (var c in checks.Where(c => now - c.Tick >= CheckMs).ToList()) ResolveCheck(c, null);
+        foreach (var w in releaseWaits.Where(w => now - w.Tick >= ReleaseMs).ToList()) ResolveRelease(w, null);
         foreach (var row in observations.Where(o => now - o.Tick >= ObservationMs).ToList())
         {
             observations.Remove(row);
             Raise(row.ToObserved("Unknown keyboard"));
         }
-        if (deferred.Count == 0 && checks.Count == 0 && observations.Count == 0)
+        if (deferred.Count == 0 && releaseWaits.Count == 0 && observations.Count == 0)
             Native.KillTimer(window!.Handle, ResolveTimer);
     }
 
@@ -720,7 +801,7 @@ internal sealed unsafe class InputEngine : IDisposable
         switch (id)
         {
             case SettleTimer:
-                FinishCapture(timedOut: false);
+                OnSettleTick();
                 break;
             case CaptureTimeoutTimer:
                 FinishCapture(timedOut: true);
@@ -742,11 +823,17 @@ internal sealed unsafe class InputEngine : IDisposable
         sb.AppendLine($"Keyboard hook: {(hook != 0 ? "installed" : "NOT installed")} {StartError}");
         sb.AppendLine($"Custom Fn key: {(CustomFnVk == 0 ? "off" : KeyNames.Vk(CustomFnVk))}");
         sb.AppendLine("Keyboards:");
-        foreach (var k in Keyboards) sb.AppendLine($"  {k.Id}  {k.Connection}  {NameOf(k)}");
+        foreach (var k in Keyboards) sb.AppendLine($"  {k.Id,-10} {k.Connection,-13} {NameOf(k)}");
+        sb.AppendLine("Keyboard devices:");
+        foreach (var d in RawDevices.List().Where(d => d.dwType == Native.RIM_TYPEKEYBOARD))
+        {
+            string path = RawDevices.Name(d.hDevice);
+            sb.AppendLine($"  {KeyboardFor(d.hDevice)?.Id ?? "?",-10} {RawDevices.Description(path),-28} {path}");
+        }
         sb.AppendLine("HID collections:");
         foreach (var d in devices.Values.OrderBy(d => d.VidPid).ThenBy(d => d.UsagePage))
         {
-            sb.AppendLine($"  {d.VidPid}  page {d.UsagePage:X4} usage {d.Usage:X4}  \"{d.Product}\"  " +
+            sb.AppendLine($"  {d.VidPid}  {d.KeyboardId,-10} page {d.UsagePage:X4} usage {d.Usage:X4}  \"{d.Product}\"  " +
                           $"input pages [{string.Join(",", d.InputPages.Select(p => p.ToString("X4")))}]  report IDs: {d.HasReportIds}");
         }
         sb.AppendLine("Listening for: " + string.Join(", ", Listening));
@@ -763,11 +850,12 @@ internal sealed unsafe class InputEngine : IDisposable
         public int Tick { get; } = tick;
     }
 
-    /// <summary>An ordinary key (let through) waiting to learn which keyboard sent it.</summary>
-    sealed class PendingCheck(int vk, int mods, int tick)
+    /// <summary>A held-back key, now released, waiting for Windows to name the keyboard of the release.</summary>
+    sealed class ReleaseWait(int vk, int mods, bool winOrAlt, int tick)
     {
         public int Vk { get; } = vk;
         public int Mods { get; } = mods;
+        public bool WinOrAlt { get; } = winOrAlt;
         public int Tick { get; } = tick;
     }
 
@@ -786,7 +874,8 @@ internal sealed unsafe class InputEngine : IDisposable
         public Trigger? Consumer { get; set; }
         public Trigger? Other { get; set; }
         public HashSet<int> ModifiersPressed { get; } = [];
-        public bool Armed { get; set; }
+        public int ArmedTick { get; set; }
+        public int KeyUpTick { get; set; }
     }
 
     /// <summary>Message-only window that receives raw input, timers and queued work on the input thread.</summary>

@@ -269,7 +269,7 @@ internal sealed class MainForm : Form
 
         var intro = Ui.MakeLabel(
             "Every keyboard connected to this PC. Press a key on one and its row lights up.\n" +
-            "Built-in laptop keyboards show up here once you type on them.", Ui.Muted);
+            "A laptop's own keys (including its Fn hotkeys) count as one built-in keyboard. Receivers are mouse dongles that can also send keys.", Ui.Muted);
         intro.Margin = new Padding(0, 0, 0, 10);
 
         var buttons = new FlowLayoutPanel
@@ -405,10 +405,10 @@ internal sealed class MainForm : Form
             "Then the remap also changes that key when pressed without Fn. Many keyboards have an Fn-lock " +
             "(often Fn + Esc) that swaps the top row between F1–F12 and the media functions.");
         Section("Several keyboards",
-            "Each shortcut can work on every keyboard or on just one (pick it in the shortcut's Keyboard box). " +
-            "Media and launch keys like Mail, Calculator or volume can be switched off on one keyboard only. For ordinary " +
-            "keys, Windows only says which keyboard was used after the key has done its job, so a one-keyboard shortcut " +
-            "on an ordinary key runs alongside the key's normal function.");
+            "Each shortcut can work on every keyboard or on just one (pick it in the shortcut's Keyboard box), so the same " +
+            "key can do different things on different keyboards. Windows only says which keyboard a key came from once it's " +
+            "released, so a one-keyboard shortcut on an ordinary key runs when you let go. On the other keyboards that key " +
+            "still works, also on release (holding it won't repeat). Media keys like volume or Mail aren't affected by this.");
         Section("No Fn key?",
             "Pick a custom Fn key on the Keyboards tab, such as Caps Lock. Then add shortcuts by holding it while you " +
             "capture a key. Tapped on its own, the key keeps doing its normal job.");
@@ -482,8 +482,7 @@ internal sealed class MainForm : Form
     {
         var t = m.Trigger;
         if (t.Kind == TriggerKind.Hid) return "Not affected";
-        bool canSwitchOff = t.Keyboard is null || KeyNames.HasMediaSignal(t.Vk);
-        return m.BlockOriginal && canSwitchOff ? "Switched off" : "Still works";
+        return m.BlockOriginal ? "Switched off" : "Still works";
     }
 
     string KeyboardText(Trigger t) => t.Keyboard is { } id
@@ -590,22 +589,17 @@ internal sealed class MainForm : Form
     void UpdateDevice()
     {
         var engine = app.Engine;
-        var external = engine.Keyboards.Where(k => k.External).ToList();
-        var best = external.FirstOrDefault(k => engine.NameOf(k).Contains("keyboard", StringComparison.OrdinalIgnoreCase))
-                   ?? external.FirstOrDefault();
-        if (best is null)
+        var keyboards = engine.Keyboards.Where(k => !k.IsReceiver).ToList();
+        deviceDot.ForeColor = keyboards.Count > 0 ? Ui.Good : Ui.HeaderMuted;
+        deviceText.Text = keyboards.Count switch
         {
-            deviceDot.ForeColor = Ui.HeaderMuted;
-            deviceText.Text = "No USB keyboard found";
-        }
-        else
-        {
-            deviceDot.ForeColor = Ui.Good;
-            deviceText.Text = engine.NameOf(best) + (external.Count > 1 ? $"  +{external.Count - 1} more" : " connected");
-        }
+            0 => "No keyboard found",
+            1 => $"{engine.NameOf(keyboards[0])} connected",
+            _ => $"{keyboards.Count} keyboards connected",
+        };
         tips.SetToolTip(deviceText, engine.Keyboards.Count == 0
-            ? "Plug in your keyboard. Built-in laptop keys still work with the Key monitor."
-            : string.Join("\n", engine.Keyboards.Select(k => $"{engine.NameOf(k)}  ({k.Connection}, {k.Id})")));
+            ? "Plug in a keyboard."
+            : string.Join("\n", engine.Keyboards.Select(k => $"{engine.NameOf(k)}  ({k.Connection})")));
         RefreshKeyboards();
         RefreshList(Selected);
     }

@@ -171,4 +171,21 @@ internal static unsafe class Native
     [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode, EntryPoint = "CM_Get_DevNode_Registry_PropertyW")]
     public static extern int CM_Get_DevNode_Registry_Property(uint devInst, uint property, out uint regType,
         [Out] byte[]? buffer, ref uint length, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DEVPROPKEY
+    {
+        public Guid fmtid;
+        public uint pid;
+    }
+
+    public const uint DEVPROP_TYPE_BOOLEAN = 0x11;
+
+    /// <summary>True when the device is part of the computer itself rather than plugged in.</summary>
+    public static readonly DEVPROPKEY DEVPKEY_Device_InLocalMachineContainer =
+        new() { fmtid = new Guid("8c7ed206-3f8a-4827-b3ab-ae9e1faefc6c"), pid = 4 };
+
+    [DllImport("cfgmgr32.dll", EntryPoint = "CM_Get_DevNode_PropertyW")]
+    public static extern int CM_Get_DevNode_Property(uint devInst, ref DEVPROPKEY key, out uint propertyType,
+        [Out] byte[] buffer, ref uint size, uint flags);
 }

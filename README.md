@@ -8,8 +8,8 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
 
 - **Remap Fn combos.** Many keyboards send signals like *Mail*, *Media Player* or *Browser Home* from their Fn row.
   Windows ignores most of them unless a default app is set up. KeyLayer catches them and runs your action instead.
-- **Per-keyboard shortcuts.** Every connected keyboard is listed, and each shortcut can apply to all keyboards or just
-  one.
+- **Per-keyboard shortcuts.** Every connected keyboard is listed, built-in included, and each shortcut can apply to all
+  keyboards or just one.
 - **Your own Fn key.** Choose Caps Lock, Right Ctrl, Menu or similar. Hold it and press another key to run a shortcut;
   tap it alone and it works as normal.
 - **Actions:** open an app, file, folder or website · press a key combination · type text · media and volume ·
@@ -38,12 +38,14 @@ To make your own Fn key, open the **Keyboards** tab and set **Custom Fn key**. T
 
 - Windows never sees the Fn key itself; the keyboard handles it and sends a different signal instead. That's why only
   combos that show up in the Key monitor can be remapped.
-- Windows reports which keyboard a key came from only *after* the key has done its normal job. So:
-  - **Media and launch keys** (Mail, Calculator, volume, play/pause, browser keys) can be fully remapped per keyboard.
-    They carry their own signal that names the keyboard.
-  - **Ordinary keys** can run a shortcut on one keyboard only. But their normal function can only be switched off for
-    all keyboards at once.
-- Built-in laptop keyboards appear in the list once you've typed on them.
+- All keyboards are detected at startup. A laptop's own keyboard and its hotkey devices are grouped as one
+  **Built-in keyboard**. Mouse dongles that can also send keys are listed as **receivers**.
+- The same key can do different things on different keyboards. Windows only says which keyboard a key came from when
+  the key is released. So:
+  - A one-keyboard shortcut on an **ordinary key** runs when you let go of the key.
+  - On the other keyboards that key keeps its normal job, also on release, and holding it won't auto-repeat.
+  - **Media and launch keys** (volume, play/pause, Mail, Calculator, browser keys) carry their own signal naming the
+    keyboard, so they react right away.
 - Shortcuts don't fire while an app running as administrator is in front, unless KeyLayer also runs as administrator.
 
 ## Building

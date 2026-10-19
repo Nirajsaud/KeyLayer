@@ -388,7 +388,7 @@ internal sealed class MappingDialog : Form
         nameBox.PlaceholderText = t.Description;
 
         // A new capture is limited to the keyboard it came from only when there's more than one to choose between.
-        string? keyboard = fromSaved || engine.Keyboards.Count > 1 ? t.Keyboard : null;
+        string? keyboard = fromSaved || engine.Keyboards.Count(k => !k.IsReceiver) > 1 ? t.Keyboard : null;
         PopulateKeyboards(t, keyboard);
         UpdateWarning();
         UpdateBlockOption();
@@ -488,18 +488,17 @@ internal sealed class MappingDialog : Form
     void UpdateBlockOption()
     {
         bool isKey = trigger is null || trigger.Kind == TriggerKind.Key;
-        // Windows names the keyboard only after an ordinary key has been delivered (media keys are held until it does).
-        bool ordinaryOnOneKeyboard = trigger is { Kind: TriggerKind.Key } t && SelectedKeyboard is not null && !KeyNames.HasMediaSignal(t.Vk);
-        bool canSwitchOff = isKey && !ordinaryOnOneKeyboard;
+        // Windows names the keyboard of an ordinary key only when it's released (media keys carry their own signal).
+        bool onRelease = trigger is { Kind: TriggerKind.Key } t && SelectedKeyboard is not null && !KeyNames.HasMediaSignal(t.Vk);
         bool wasEnabled = blockBox.Enabled;
-        blockBox.Enabled = canSwitchOff;
-        if (!canSwitchOff) blockBox.Checked = false;
+        blockBox.Enabled = isKey;
+        if (!isKey) blockBox.Checked = false;
         else if (!wasEnabled) blockBox.Checked = true;
         blockHint.Text = !isKey
             ? "Not needed: Windows doesn't use this signal, so there's nothing to switch off."
-            : ordinaryOnOneKeyboard
-                ? "Not possible for one keyboard only: Windows says which keyboard a key came from only after the key has " +
-                  "done its job. Choose “Any keyboard” to switch it off."
+            : onRelease
+                ? "On one keyboard only, the shortcut runs when you let go of the key. The other keyboards keep the " +
+                  "key's normal job (also on release)."
                 : "Recommended. Otherwise the key does its usual thing as well as your shortcut.";
     }
 

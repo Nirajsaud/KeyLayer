@@ -21,6 +21,9 @@ internal sealed unsafe class HidDevice : IDisposable
     public ushort UsagePage { get; private init; }
     public ushort Usage { get; private init; }
     public string Product { get; private init; } = "";
+
+    /// <summary>The keyboard this collection belongs to: "VID:PID" for external devices, or the built-in keyboard.</summary>
+    public string KeyboardId { get; private init; } = "";
     public ushort[] InputPages { get; private set; } = [];
     public bool HasReportIds { get; private set; }
 
@@ -45,6 +48,7 @@ internal sealed unsafe class HidDevice : IDisposable
             UsagePage = info.hidUsagePage,
             Usage = info.hidUsage,
             Product = RawDevices.Product(path),
+            KeyboardId = RawDevices.KeyboardIdentity(path).Id,
         };
         device.LoadPreparsed();
         return device;
@@ -204,27 +208,56 @@ internal static unsafe partial class RawDevices
         return m.Success ? $"{m.Groups[1].Value}:{m.Groups[2].Value}".ToUpperInvariant() : null;
     }
 
+    /// <summary>ID shared by everything built into the PC: the laptop keyboard and its hotkey devices.</summary>
+    public const string BuiltInId = "BUILTIN";
+
+    static readonly Dictionary<string, bool> builtInCache = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// A keyboard's stable ID and how it's connected. External keyboards are identified by "VID:PID"
-    /// (all of a keyboard's collections share it); built-in ones by their hardware ID, e.g. "ACPI#MSFT0001".
+    /// (all of a keyboard's collections share it); everything built into the PC shares <see cref="BuiltInId"/>.
     /// </summary>
     public static (string Id, string Connection, bool External) KeyboardIdentity(string path)
     {
+        if (IsBuiltIn(path)) return (BuiltInId, "Built-in", false);
         bool bluetooth = path.Contains("{00001124", StringComparison.OrdinalIgnoreCase)
                          || path.Contains("{00001812", StringComparison.OrdinalIgnoreCase);
-        if (VidPid(path) is { } id) return (id, bluetooth ? "Bluetooth" : "USB", true);
         var parts = path.TrimStart('\\', '?').Split('#');
-        return (parts.Length >= 2 ? $"{parts[0]}#{parts[1]}".ToUpperInvariant() : path, "Built-in", false);
+        string id = VidPid(path) ?? (parts.Length >= 2 ? $"{parts[0]}#{parts[1]}".ToUpperInvariant() : path);
+        return (id, bluetooth ? "Bluetooth" : "USB", true);
+    }
+
+    /// <summary>
+    /// Whether Windows counts the device as part of the computer itself (it shares the PC's device container).
+    /// That holds for laptop keyboards however they're wired, including internal USB ones.
+    /// </summary>
+    public static bool IsBuiltIn(string path)
+    {
+        if (builtInCache.TryGetValue(path, out bool cached)) return cached;
+        bool builtIn = VidPid(path) is null; // fallback: devices without a vendor ID sit on the motherboard
+        if (InstanceId(path) is { } instance && Native.CM_Locate_DevNode(out uint node, instance, 0) == 0)
+        {
+            var key = Native.DEVPKEY_Device_InLocalMachineContainer;
+            var buffer = new byte[4];
+            uint size = (uint)buffer.Length;
+            if (Native.CM_Get_DevNode_Property(node, ref key, out uint type, buffer, ref size, 0) == 0 && type == Native.DEVPROP_TYPE_BOOLEAN)
+                builtIn = buffer[0] != 0;
+        }
+        builtInCache[path] = builtIn;
+        return builtIn;
+    }
+
+    /// <summary>\\?\HID#ASUE140D&amp;Col04#5&amp;2dea9dfa&amp;0&amp;0003#{guid}  ->  HID\ASUE140D&amp;Col04\5&amp;2dea9dfa&amp;0&amp;0003</summary>
+    static string? InstanceId(string path)
+    {
+        var parts = path.TrimStart('\\', '?').Split('#');
+        return parts.Length < 3 ? null : string.Join('\\', parts.Take(3));
     }
 
     /// <summary>The device's name as Device Manager shows it, e.g. "ASUS Keyboard".</summary>
     public static string Description(string path)
     {
-        // \\?\HID#ASUE140D&Col04#5&2dea9dfa&0&0003#{guid}  ->  HID\ASUE140D&Col04\5&2dea9dfa&0&0003
-        var parts = path.TrimStart('\\', '?').Split('#');
-        if (parts.Length < 3) return "";
-        string instance = string.Join('\\', parts.Take(3));
-        if (Native.CM_Locate_DevNode(out uint node, instance, 0) != 0) return "";
+        if (InstanceId(path) is not { } instance || Native.CM_Locate_DevNode(out uint node, instance, 0) != 0) return "";
         foreach (uint property in (uint[])[Native.CM_DRP_FRIENDLYNAME, Native.CM_DRP_DEVICEDESC])
         {
             uint length = 512;
