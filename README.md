@@ -1,0 +1,60 @@
+# KeyLayer
+
+Custom shortcuts for every keyboard on your Windows PC, including the Fn keys that never seemed to do anything.
+
+Got a laptop keyboard and an external one? Each can have its own shortcuts. No Fn key? Pick a key to act as one.
+
+## What it does
+
+- **Remap Fn combos.** Many keyboards send signals like *Mail*, *Media Player* or *Browser Home* from their Fn row.
+  Windows ignores most of them unless a default app is set up. KeyLayer catches them and runs your action instead.
+- **Per-keyboard shortcuts.** Every connected keyboard is listed, and each shortcut can apply to all keyboards or just
+  one.
+- **Your own Fn key.** Choose Caps Lock, Right Ctrl, Menu or similar. Hold it and press another key to run a shortcut;
+  tap it alone and it works as normal.
+- **Actions:** open an app, file, folder or website · press a key combination · type text · media and volume ·
+  screen brightness · lock / sleep · screenshot, show desktop, task view and more · run a command · switch a key off.
+- **Key monitor** that shows exactly what each key press sends, and from which keyboard.
+
+It runs quietly in the system tray. Settings are saved in `%APPDATA%\KeyLayer\config.json`.
+
+## Requirements
+
+- Windows 10 or 11
+- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+
+## Getting started
+
+1. Open the **Key monitor** tab and press your Fn combos one by one.
+   - Anything that shows up there can be remapped.
+   - Combos that show **nothing** are handled inside the keyboard itself (usually backlight or lighting controls),
+     and no app can change them.
+2. On **Shortcuts**, click **Add shortcut…**, then **Capture key**, and press the key or combo.
+3. Pick a keyboard (or *Any keyboard*) and choose what it should do.
+
+To make your own Fn key, open the **Keyboards** tab and set **Custom Fn key**. Then capture shortcuts while holding it.
+
+## Good to know
+
+- Windows never sees the Fn key itself; the keyboard handles it and sends a different signal instead. That's why only
+  combos that show up in the Key monitor can be remapped.
+- Windows reports which keyboard a key came from only *after* the key has done its normal job. So:
+  - **Media and launch keys** (Mail, Calculator, volume, play/pause, browser keys) can be fully remapped per keyboard.
+    They carry their own signal that names the keyboard.
+  - **Ordinary keys** can run a shortcut on one keyboard only. But their normal function can only be switched off for
+    all keyboards at once.
+- Built-in laptop keyboards appear in the list once you've typed on them.
+- Shortcuts don't fire while an app running as administrator is in front, unless KeyLayer also runs as administrator.
+
+## Building
+
+```bash
+dotnet publish src/KeyLayer/KeyLayer.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist
+```
+
+`KeyLayer.exe --selftest out.txt` writes what the app can see (keyboards, HID devices, hook status) to a file. That's
+handy when reporting a problem.
+
+## License
+
+[MIT](LICENSE)

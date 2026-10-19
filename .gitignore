@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+publish/
+.vs/
+*.user
+*.suo
+
+# local notes and third-party files that can't be redistributed
+research/
