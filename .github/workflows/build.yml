@@ -28,6 +28,8 @@ jobs:
           if ($env:GITHUB_REF -like 'refs/tags/v*') { $v = $env:GITHUB_REF_NAME.Substring(1) }
           else { $v = (Select-Xml -Path src/KeyLayer/KeyLayer.csproj -XPath '//Version').Node.InnerText }
           "version=$v" >> $env:GITHUB_OUTPUT
+          # Windows file versions are numbers only: 1.2.3-rc.1 -> 1.2.3
+          "number=$($v -replace '-.*$', '')" >> $env:GITHUB_OUTPUT
 
       # Self-contained and not compressed: nothing to install, and it uses as little memory as the small build.
       - name: Build the ready-to-run exe
@@ -46,13 +48,18 @@ jobs:
           Get-Content $report
           if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
 
+      - name: Draw the installer artwork
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File installer/make-art.ps1
+
       - name: Build the installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          "Inno Setup $((Get-Item $iscc).VersionInfo.ProductVersion)"
           New-Item -ItemType Directory release -Force | Out-Null
-          & $iscc /Q "/DAppVersion=${{ steps.version.outputs.version }}" "/DSourceExe=$(Resolve-Path out/standalone/KeyLayer.exe)" "/O$(Resolve-Path release)" installer/KeyLayer.iss
+          & $iscc /Q "/DAppVersion=${{ steps.version.outputs.version }}" "/DFileVersion=${{ steps.version.outputs.number }}" "/DSourceExe=$(Resolve-Path out/standalone/KeyLayer.exe)" "/O$(Resolve-Path release)" installer/KeyLayer.iss
           if ($LASTEXITCODE -ne 0) { throw "The installer didn't build" }
 
       # Install for this user, check the app and its Start menu shortcut, then uninstall and check it's all gone.
@@ -62,10 +69,13 @@ jobs:
         run: |
           $dir = "$env:RUNNER_TEMP\KeyLayer install test"
           $shortcut = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KeyLayer.lnk"
-          $p = Start-Process release/KeyLayer-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=""$dir""", '/MERGETASKS="!startup"' -PassThru -Wait
+          $settings = "$env:APPDATA\KeyLayer\config.json"
+          $p = Start-Process release/KeyLayer-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=""$dir""", '/MERGETASKS="!startup"', '/FNKEY=20' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "Setup failed with exit code $($p.ExitCode)" }
           if (-not (Test-Path "$dir\KeyLayer.exe")) { throw "KeyLayer.exe wasn't installed" }
           if (-not (Test-Path $shortcut)) { throw "No Start menu shortcut" }
+          if (-not (Select-String -Path $settings -Pattern '"CustomFnVk": 20,' -Quiet)) { throw "The chosen Fn key wasn't saved" }
+          "Fn key saved: $(Get-Content $settings -Raw)"
           $entry = Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object DisplayName -eq 'KeyLayer'
           if (-not $entry) { throw "No uninstall entry in Settings > Apps" }
           "Installed $($entry.DisplayVersion) to $dir"
@@ -78,7 +88,9 @@ jobs:
           for ($i = 0; $i -lt 60 -and (Test-Path "$dir\KeyLayer.exe"); $i++) { Start-Sleep -Seconds 1 }
           if (Test-Path "$dir\KeyLayer.exe") { throw "Uninstall left KeyLayer.exe behind" }
           if (Test-Path $shortcut) { throw "Uninstall left the Start menu shortcut behind" }
-          "Uninstalled cleanly"
+          if (-not (Test-Path $settings)) { throw "A quiet uninstall should keep the user's settings" }
+          Remove-Item (Split-Path $settings) -Recurse -Force
+          "Uninstalled cleanly, settings kept"
 
       - name: Package
         shell: pwsh
@@ -100,6 +112,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
-        run: >
-          gh release create $env:GITHUB_REF_NAME (Get-ChildItem release).FullName
-          --title "KeyLayer $env:GITHUB_REF_NAME" --notes-file .github/release-notes.md
+        # A tag like v1.2.3-rc.1 is a test build: published as a pre-release, so the Download button keeps
+        # pointing at the latest proper release.
+        run: |
+          $extra = if ($env:GITHUB_REF_NAME -like '*-*') { @('--prerelease') } else { @() }
+          gh release create $env:GITHUB_REF_NAME (Get-ChildItem release).FullName --title "KeyLayer $env:GITHUB_REF_NAME" --notes-file .github/release-notes.md @extra

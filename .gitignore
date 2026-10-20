@@ -8,3 +8,8 @@ publish/
 
 # local notes and third-party files that can't be redistributed
 research/
+
+# drawn by installer/make-art.ps1 during the build
+installer/art/
+release/
+out/

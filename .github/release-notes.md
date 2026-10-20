@@ -10,21 +10,25 @@
 run it. Click **More info**, then **Run anyway**. KeyLayer is open source and sends nothing anywhere; see the
 [README](https://github.com/Nirajsaud/KeyLayer#privacy) for what it does with your key presses.
 
-## What's new in 1.2.2
+## What's new in 1.2.3
 
-Your keyboard's own Fn key never reaches Windows (the keyboard handles it), so Fn + H arrives as just H. KeyLayer now
-makes that clear and points you to the fix:
+A setup that feels like KeyLayer:
 
-- **First start:** a card explains this and offers to make **Caps Lock** your **KeyLayer Fn key** in one click
-  (or pick another key).
-- **"Did you hold Fn?"** If you capture a plain key, the editor says what happened and offers *Use Caps Lock + H
-  instead*.
-- A tip in the key box before you press, clearer Test keys and Help text, and the setting is now called
-  **KeyLayer Fn key**.
-- Fix: trying a second copy of KeyLayer (like the portable zip) no longer takes over *Start with Windows* from your
+- **New look:** KeyLayer artwork and a friendlier welcome ("Let's give your keys new superpowers").
+- **Pick your KeyLayer Fn key while installing:** Caps Lock, Right Ctrl, Right Alt, the Menu key, or decide later.
+  KeyLayer opens ready to go, and the last page tells you how to make your first shortcut.
+- **A friendly goodbye when uninstalling:** keep your shortcuts for next time, or delete them, plus a link to say what
+  didn't work.
+
+Updating: run the new `KeyLayer-Setup.exe`. Your shortcuts are kept, and if you already have a KeyLayer Fn key you
+won't be asked again.
+
+### Also recently (1.2.2)
+
+- Your keyboard's own Fn key never reaches Windows, so Fn + H arrives as just H. KeyLayer now explains this on first
+  start, asks "Did you hold Fn?" when you capture a plain key, and offers a **KeyLayer Fn key** in one click.
+- Trying a second copy of KeyLayer (like the portable zip) no longer takes over *Start with Windows* from your
   installed copy.
-
-Updating from 1.2.1: run the new `KeyLayer-Setup.exe`. Your shortcuts are kept.
 
 ## What KeyLayer does
 

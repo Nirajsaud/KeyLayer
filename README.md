@@ -9,8 +9,8 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
 [![Download KeyLayer for Windows](https://img.shields.io/badge/Download-KeyLayer%20for%20Windows-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Nirajsaud/KeyLayer/releases/latest/download/KeyLayer-Setup.exe)
 
 Run **`KeyLayer-Setup.exe`** and click through. It installs just for you (no admin rights needed), adds KeyLayer to
-the Start menu, can start it when you sign in, and can be removed any time from **Settings › Apps › Installed apps**.
-Nothing else needs installing.
+the Start menu, can start it when you sign in, lets you pick your [KeyLayer Fn key](#features) on the way, and can be
+removed any time from **Settings › Apps › Installed apps**. Nothing else needs installing.
 
 Prefer not to install anything? The [Releases page](https://github.com/Nirajsaud/KeyLayer/releases/latest) also has a
 **portable** version, `KeyLayer-…-win-x64.zip`: unzip it anywhere and run `KeyLayer.exe`. Keep it somewhere permanent
