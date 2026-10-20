@@ -39,6 +39,31 @@ internal static unsafe class Apps
         }
     }
 
+    const string FrameHost = "ApplicationFrameHost.exe";
+
+    public static bool IsFrameHost(string? exe) => string.Equals(exe, FrameHost, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Full path of the program a window belongs to. Store apps (Calculator, Photos …) sit inside a frame window that
+    /// belongs to Windows' ApplicationFrameHost; the app's own window is a child of it, so that's where the real app is.
+    /// </summary>
+    public static string? ExePathOf(nint hwnd)
+    {
+        Native.GetWindowThreadProcessId(hwnd, out uint processId);
+        string? path = processId == 0 ? null : ExePath(processId);
+        if (!IsFrameHost(Path.GetFileName(path))) return path;
+
+        string? inner = null;
+        Native.EnumChildWindows(hwnd, (child, _) =>
+        {
+            Native.GetWindowThreadProcessId(child, out uint childProcess);
+            if (childProcess == processId || ExePath(childProcess) is not { } found) return true;
+            inner = found;
+            return false;
+        }, 0);
+        return inner ?? path;
+    }
+
     public static AppRef FromPath(string path) => new() { Exe = Path.GetFileName(path), Name = FriendlyName(path), Path = path };
 
     /// <summary>The name the program gives itself (e.g. "Adobe Premiere Pro"), else its file name.</summary>
@@ -66,7 +91,7 @@ internal static unsafe class Apps
         {
             if (!IsAppWindow(hwnd)) return true;
             Native.GetWindowThreadProcessId(hwnd, out uint processId);
-            if (processId == self || ExePath(processId) is not { } path) return true;
+            if (processId == self || ExePathOf(hwnd) is not { } path) return true;
             string exe = Path.GetFileName(path);
             if (!hosts.Contains(exe) && !found.ContainsKey(exe)) found[exe] = FromPath(path);
             return true;

@@ -16,13 +16,17 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
 - **Per keyboard.** Each shortcut works on every keyboard or just one, so the same key can do different things on your
   laptop and external keyboards.
 - **Key capture.** Click the key box and press the key; KeyLayer records it and the keyboard it came from.
-- **Per-shortcut options:** switch off the key's normal job or keep it, give it a name, turn it on or off, edit,
-  delete, or "Try it now".
+- **Per-shortcut options:** switch off the key's normal job or keep it, **repeat while held** (like holding a volume
+  key), give it a name, turn it on or off, edit, delete, or "Try it now".
 
 ### Actions
 - Open an app, file, folder or website (with arguments; `ms-settings:` links work too)
 - Press a key combination (record it or build it from lists)
-- Type text, including new lines and tabs
+- **Act as another key:** the key is held down for as long as you hold yours, e.g. Caps Lock acting as Ctrl, or
+  remapping keys for a game
+- Type text, including new lines and tabs, in one of three ways: typed as characters (most apps), pressed key by key
+  (games and remote desktop), or pasted (fast for long text; your clipboard is put back and the text stays out of
+  clipboard history)
 - Media and system controls:
   - play / pause, next, previous, stop · volume up / down, mute · screen brightness up / down
   - show desktop, Task View, screenshot, clipboard history, emoji panel
@@ -43,7 +47,8 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
   (e.g. "Almost every app uses Ctrl + S to save").
 - **One-click fix:** "Use Caps Lock + S instead", which also sets up the Fn key if you don't have one yet.
 - **Turn every shortcut off in chosen apps** (games, Premiere Pro …), or **one shortcut** in chosen apps. Pick from the
-  apps you have open, with their icons, or browse for a program.
+  apps you have open, with their icons, or browse for a program. Store apps (Calculator, Photos …) are recognised one by
+  one.
 - Warnings for a key that already has a shortcut, Fn shortcuts while the Fn key is off, and power keys Windows still
   acts on.
 
@@ -126,12 +131,11 @@ A shortcut takes over its key in every app, and apps don't tell Windows which sh
 ## Limitations
 
 - Two keyboards of the exact same model can't be told apart, so they share their shortcuts.
-- Holding a shortcut runs it once; it doesn't repeat while held (e.g. for volume).
-- "Press a key combination" taps the combination. It can't hold a key down for as long as you hold yours, so it's not
-  a full key remapper for games.
+- A shortcut limited to one keyboard on an ordinary key runs when you let go (that's when Windows says which keyboard
+  it was), so it can't repeat while held or act as a held key. On any keyboard, and for Fn and media keys, both work.
 - The clash check knows the shortcuts of Windows and common apps, not every app's own shortcuts.
-- Store apps (like Calculator) all run inside one Windows program, so they can't be turned off one by one.
-- Text typed by a shortcut may not arrive in some games and remote-desktop windows.
+- Games with anti-cheat that ignore all simulated input won't see typed text or keys from KeyLayer, whichever typing
+  method you pick.
 
 ## Building
 

@@ -35,10 +35,13 @@ internal static class Glyphs
     public const string Command = "";
     public const string Off = "";
 
+    public const string Hold = "";
+
     public static string ForAction(ActionType type) => type switch
     {
         ActionType.OpenTarget => Open,
         ActionType.SendShortcut => Keyboard,
+        ActionType.HoldKey => Hold,
         ActionType.TypeText => Text,
         ActionType.BuiltIn => Media,
         ActionType.RunCommand => Command,
@@ -87,6 +90,8 @@ internal sealed class ShortcutItem : Observable
             parts.Add(mapping.Name);
         if (mapping.Trigger.Kind == TriggerKind.Key && !mapping.BlockOriginal)
             parts.Add("The key also does its normal job");
+        if (mapping.RepeatWhileHeld)
+            parts.Add("Repeats while held");
         if (mapping.ExcludedApps.Count > 0)
             parts.Add("Off in " + string.Join(", ", mapping.ExcludedApps.Select(a => a.Name.Length > 0 ? a.Name : a.Exe)));
         Details = string.Join("  ·  ", parts);

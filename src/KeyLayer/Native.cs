@@ -76,6 +76,7 @@ internal static unsafe class Native
     public delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(nint parent, EnumWindowsProc callback, nint lParam);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(nint hWnd);
     [DllImport("user32.dll")] public static extern nint GetWindow(nint hWnd, uint cmd);
     [DllImport("user32.dll")] public static extern int GetWindowTextLength(nint hWnd);

@@ -35,7 +35,8 @@ internal sealed record KeyboardInfo(string Id, string Product, string Connection
 internal sealed unsafe class InputEngine : IDisposable
 {
     const int WM_RUN_QUEUE = Native.WM_APP + 1;
-    const nuint SettleTimer = 1, CaptureTimeoutTimer = 2, DeviceTimer = 3, ResolveTimer = 4;
+    const nuint SettleTimer = 1, CaptureTimeoutTimer = 2, DeviceTimer = 3, ResolveTimer = 4, RepeatTimer = 5;
+    const int MaxRepeatMs = 30000;        // a held signal repeats its shortcut for at most this long
     const int SettleMs = 350;             // after the first signal of a capture, wait for related ones (key + HID often both arrive)
     const int CaptureReleaseMs = 4000;    // how long a capture waits for the key's release to learn its keyboard
     const uint RepeatWindowMs = 1500;     // a key-down within this time of the last one for the same key is auto-repeat
@@ -47,10 +48,15 @@ internal sealed unsafe class InputEngine : IDisposable
     const int RawBufferSize = 64 * 1024;
 
     enum KeyAction { Pass, Block, BlockUntilRelease }
-    enum KeyRelease { Normal, Decide, Pass }
 
-    /// <summary>What was decided when a key went down, so repeats and the release follow suit.</summary>
-    readonly record struct HeldKey(uint Time, bool Blocked, KeyRelease Release, int Mods, bool WinOrAlt);
+    /// <summary>What a key's release does: nothing special, decide the shortcut then, pass it, or let go of a held key.</summary>
+    enum KeyRelease { Normal, Decide, Pass, Unhold }
+
+    /// <summary>
+    /// What was decided when a key went down, so repeats and the release follow suit. <see cref="Fired"/> is the
+    /// shortcut it ran: run again on auto-repeat if it repeats, or the key it holds down.
+    /// </summary>
+    readonly record struct HeldKey(uint Time, bool Blocked, KeyRelease Release, int Mods, bool WinOrAlt, Mapping? Fired = null);
 
     readonly SynchronizationContext ui;
     readonly ConcurrentQueue<Action> queue = new();
@@ -73,6 +79,7 @@ internal sealed unsafe class InputEngine : IDisposable
     nint hook;
     Native.LowLevelKeyboardProc? hookProc;
     int lastHookTick, lastHookInstallTick, hookInstalls;
+    Mapping? justFired; // the shortcut the current key-down ran, if any
     nint rawBuffer, drainBuffer;
     volatile Dictionary<string, Mapping> table = [];
     volatile HashSet<string> keyboardSpecific = [];
@@ -109,9 +116,11 @@ internal sealed unsafe class InputEngine : IDisposable
             {
                 rawHeld.Clear();
                 rawFnHeld = false;
-                // The hook misses keys released while our window is in front: don't leave the Fn key stuck down.
+                // The hook misses keys released while our window is in front: don't leave the Fn key, or keys
+                // held for "act as another key", stuck down.
                 fnHeld = false;
                 held.Remove(CustomFnVk);
+                UnholdAll();
             });
         }
     }
@@ -282,6 +291,11 @@ internal sealed unsafe class InputEngine : IDisposable
             Native.DispatchMessage(ref msg);
         }
 
+        // Quitting while a key is held for "act as another key": let go of it, or it stays down.
+        foreach (var h in held.Values.Where(h => h.Release == KeyRelease.Unhold))
+            InputSender.Release(h.Fired!.Action.ShortcutMods, h.Fired.Action.ShortcutVk);
+        if (hidHold is { Holding: true } hid) InputSender.Release(hid.Mapping.Action.ShortcutMods, hid.Mapping.Action.ShortcutVk);
+
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         if (hook != 0) Native.UnhookWindowsHookEx(hook);
@@ -344,6 +358,11 @@ internal sealed unsafe class InputEngine : IDisposable
         if (held.TryGetValue(vk, out var previous) && unchecked(k.time - previous.Time) < RepeatWindowMs)
         {
             held[vk] = previous with { Time = k.time }; // auto-repeat: same decision as the first press
+            if (previous.Fired is { } m)
+            {
+                if (previous.Release == KeyRelease.Unhold) Post(() => InputSender.Repeat(m.Action.ShortcutVk));
+                else if (m.RepeatWhileHeld && !Paused) Fire(m, mask: false);
+            }
             return previous.Blocked;
         }
 
@@ -379,6 +398,7 @@ internal sealed unsafe class InputEngine : IDisposable
 
         KeyAction action;
         KeyRelease release = KeyRelease.Normal;
+        justFired = null;
         if (capture is { } cap)
         {
             if (KeyNames.IsModifier(vk))
@@ -398,10 +418,11 @@ internal sealed unsafe class InputEngine : IDisposable
         {
             action = Paused ? KeyAction.Pass : Decide(vk, mods, trigger.Keyboard, winOrAltDown);
             if (action == KeyAction.BlockUntilRelease) release = KeyRelease.Decide;
+            else if (justFired is { Action.Type: ActionType.HoldKey }) release = KeyRelease.Unhold;
         }
 
         bool block = action != KeyAction.Pass;
-        held[vk] = new HeldKey(k.time, block, release, mods, winOrAltDown);
+        held[vk] = new HeldKey(k.time, block, release, mods, winOrAltDown, justFired);
         return block;
     }
 
@@ -436,9 +457,32 @@ internal sealed unsafe class InputEngine : IDisposable
             case KeyRelease.Pass:
                 if (capture is { Key: { } key } cap && key.Vk == vk) cap.KeyUpTick = Environment.TickCount;
                 return false;
+            case KeyRelease.Unhold:
+                Unhold(h.Fired!);
+                return h.Blocked;
             default:
                 return h.Blocked;
         }
+    }
+
+    // ---- "Act as another key": the key goes down with the trigger and up with it, in order, on this thread.
+
+    void Hold(Mapping m) => Post(() => InputSender.Press(m.Action.ShortcutMods, m.Action.ShortcutVk));
+
+    void Unhold(Mapping m) => Post(() => InputSender.Release(m.Action.ShortcutMods, m.Action.ShortcutVk));
+
+    /// <summary>
+    /// Lets go of every key we're holding for a trigger. Used when the trigger's release may never reach the hook
+    /// (KeyLayer's own window came to the front), so no key stays stuck down.
+    /// </summary>
+    void UnholdAll()
+    {
+        foreach (var (vk, h) in held.Where(e => e.Value.Release == KeyRelease.Unhold).ToList())
+        {
+            held.Remove(vk);
+            Unhold(h.Fired!);
+        }
+        StopHidHold();
     }
 
     /// <summary>Picks and fires the shortcut for a key press.</summary>
@@ -476,8 +520,10 @@ internal sealed unsafe class InputEngine : IDisposable
     KeyAction FireAndBlock(Mapping? m, bool winOrAltDown)
     {
         if (m is null) return KeyAction.Pass;
+        justFired = m;
+        if (m.Action.Type == ActionType.HoldKey) Hold(m); // and let go when the key is released
         // Swallowing a key while Win/Alt is held would make Windows open Start / a menu bar on release.
-        Fire(m, mask: m.BlockOriginal && winOrAltDown);
+        else Fire(m, mask: m.BlockOriginal && winOrAltDown);
         return m.BlockOriginal ? KeyAction.Block : KeyAction.Pass;
     }
 
@@ -499,11 +545,12 @@ internal sealed unsafe class InputEngine : IDisposable
         if (excludedApps.Count == 0 && !mappingsPerApp) return null;
         nint hwnd = Native.GetForegroundWindow();
         Native.GetWindowThreadProcessId(hwnd, out uint processId);
-        if (hwnd != frontWindow || processId != frontProcess)
+        // A store app still starting up shows only its frame for a moment: look again until the app itself is there.
+        if (hwnd != frontWindow || processId != frontProcess || Apps.IsFrameHost(frontExe))
         {
             frontWindow = hwnd;
             frontProcess = processId;
-            frontExe = processId != 0 && Apps.ExePath(processId) is { } path ? Path.GetFileName(path) : null;
+            frontExe = Apps.ExePathOf(hwnd) is { } path ? Path.GetFileName(path) : null;
         }
         return frontExe;
     }
@@ -525,7 +572,17 @@ internal sealed unsafe class InputEngine : IDisposable
     {
         deferred.Remove(d);
         var m = Lookup(d.Vk, d.Mods, keyboard);
-        if (m is not null) Fire(m, mask: false);
+        bool stillHeld = held.TryGetValue(d.Vk, out var h);
+        if (m is { Action.Type: ActionType.HoldKey } && stillHeld)
+        {
+            Hold(m);
+            held[d.Vk] = h with { Release = KeyRelease.Unhold, Fired = m };
+        }
+        else if (m is not null)
+        {
+            Fire(m, mask: false);
+            if (stillHeld) held[d.Vk] = h with { Fired = m }; // so holding the key can repeat it
+        }
         if (m is null || !m.BlockOriginal) Replay(d.Vk);
     }
 
@@ -744,6 +801,7 @@ internal sealed unsafe class InputEngine : IDisposable
     void OnHidReport(HidDevice device, byte[] report)
     {
         if (!device.IsNewState(report)) return;
+        if (hidHold?.Device == device) StopHidHold(); // what's pressed on that device changed (or was released)
         var signal = device.Decode(report);
         if (signal is null) return; // released
 
@@ -787,9 +845,54 @@ internal sealed unsafe class InputEngine : IDisposable
         }
         else if (!Paused && !(Editing && appInForeground) && table.TryGetValue(trigger.MatchKey, out var m) && RunsInFront(m))
         {
-            Fire(m, mask: false);
+            // Holding and repeating need the signal's release, which only button-style signals (with usages) report.
+            bool canHold = signal.Usages.Count > 0;
+            if (canHold && m.Action.Type == ActionType.HoldKey)
+            {
+                Hold(m);
+                hidHold = new HidHold(device, m, Holding: true, Environment.TickCount);
+            }
+            else
+            {
+                Fire(m, mask: false);
+                if (canHold && m.RepeatWhileHeld)
+                {
+                    hidHold = new HidHold(device, m, Holding: false, Environment.TickCount);
+                    Native.SetTimer(window!.Handle, RepeatTimer, RepeatDelayMs, 0);
+                }
+            }
         }
     }
+
+    /// <summary>A HID signal's shortcut that's held (acting as a key) or repeating until the signal is released.</summary>
+    sealed record HidHold(HidDevice Device, Mapping Mapping, bool Holding, int Tick);
+
+    HidHold? hidHold;
+
+    void StopHidHold()
+    {
+        if (hidHold is not { } h) return;
+        hidHold = null;
+        Native.KillTimer(window!.Handle, RepeatTimer);
+        if (h.Holding) Unhold(h.Mapping);
+    }
+
+    void OnRepeatTick()
+    {
+        // A release that never comes shouldn't repeat forever.
+        if (hidHold is not { Holding: false } h || Paused || Environment.TickCount - h.Tick > MaxRepeatMs)
+        {
+            if (hidHold is { Holding: false }) hidHold = null;
+            Native.KillTimer(window!.Handle, RepeatTimer);
+            return;
+        }
+        Fire(h.Mapping, mask: false);
+        Native.SetTimer(window!.Handle, RepeatTimer, RepeatIntervalMs, 0);
+    }
+
+    // The keyboard repeat delay and rate from Windows' keyboard settings.
+    static uint RepeatDelayMs => (uint)((SystemInformation.KeyboardDelay + 1) * 250);
+    static uint RepeatIntervalMs => (uint)(1000 / (2.5 + SystemInformation.KeyboardSpeed * 27.5 / 31));
 
     /// <summary>
     /// A media signal names the keyboard behind the key code Windows makes from it. The key code may already be
@@ -1059,6 +1162,9 @@ internal sealed unsafe class InputEngine : IDisposable
                 break;
             case ResolveTimer:
                 OnResolveTimer();
+                break;
+            case RepeatTimer:
+                OnRepeatTick();
                 break;
         }
     }

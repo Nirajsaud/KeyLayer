@@ -60,8 +60,25 @@ internal static class ActionRunner
                 break;
             case ActionType.TypeText:
                 var lifted = InputSender.ReleaseHeldModifiers(0);
-                try { InputSender.Text(a.Text ?? ""); }
-                finally { InputSender.RestoreModifiers(lifted); }
+                try
+                {
+                    string text = a.Text ?? "";
+                    switch (a.TypeMethod)
+                    {
+                        case TypeMethod.Keys: InputSender.TypeAsKeys(text); break;
+                        case TypeMethod.Paste: InputSender.Paste(text); break;
+                        default: InputSender.Text(text); break;
+                    }
+                }
+                finally
+                {
+                    InputSender.RestoreModifiers(lifted);
+                }
+                break;
+            case ActionType.HoldKey:
+                // Held keys are handled by the input engine; when the key can't be held (say, from "Try it now"), tap it.
+                if (a.ShortcutVk == 0) throw new InvalidOperationException("No key has been set.");
+                SendShortcut(a.ShortcutMods, a.ShortcutVk);
                 break;
             case ActionType.BuiltIn:
                 RunBuiltIn(a.BuiltIn);

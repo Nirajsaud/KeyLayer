@@ -37,6 +37,7 @@ internal partial class ShortcutEditor : Window
         {
             [TileOpen] = (ActionType.OpenTarget, PanelOpen),
             [TileShortcut] = (ActionType.SendShortcut, PanelShortcut),
+            [TileHold] = (ActionType.HoldKey, PanelShortcut),
             [TileText] = (ActionType.TypeText, PanelText),
             [TileMedia] = (ActionType.BuiltIn, PanelMedia),
             [TileCommand] = (ActionType.RunCommand, PanelCommand),
@@ -66,6 +67,9 @@ internal partial class ShortcutEditor : Window
             else ShowKey();
         }
         UpdateNamePlaceholder();
+        UpdateBlockOption();
+        UpdateHoldOptions();
+        TypeMethodBox_SelectionChanged(TypeMethodBox, null!); // its hint wasn't there yet when the box was filled
         Loaded += (_, _) => { if (trigger is null) CaptureButton.Focus(); };
 
         // While waiting for a key, keep it from also pressing buttons here (Enter = Save, Esc = Cancel, ...).
@@ -160,6 +164,7 @@ internal partial class ShortcutEditor : Window
         UpdateWarning();
         UpdateClash();
         UpdateBlockOption();
+        UpdateHoldOptions();
         UpdateNamePlaceholder();
     }
 
@@ -215,6 +220,7 @@ internal partial class ShortcutEditor : Window
         if (loadingKeyboards || trigger is null) return;
         UpdateWarning();
         UpdateBlockOption();
+        UpdateHoldOptions();
     }
 
     /// <summary>The keyboard a key shortcut is limited to (null = any). HID signals always belong to their device.</summary>
@@ -325,12 +331,51 @@ internal partial class ShortcutEditor : Window
                 : "Recommended. Otherwise the key does its usual thing as well as your shortcut.";
     }
 
+    /// <summary>
+    /// A shortcut on an ordinary key limited to one keyboard only runs when the key is released (that's when Windows
+    /// says which keyboard it was), so it can neither repeat nor be held.
+    /// </summary>
+    bool RunsOnRelease => trigger is { Kind: TriggerKind.Key } t && SelectedKeyboard is not null && !KeyNames.HasMediaSignal(t.Vk);
+
+    /// <summary>The "Repeat while held" switch, and the hint under "Act as another key".</summary>
+    void UpdateHoldOptions()
+    {
+        if (RepeatBox is null || tiles is null) return;
+        bool hold = SelectedAction == ActionType.HoldKey;
+        RepeatBox.IsEnabled = !hold && !RunsOnRelease;
+        if (!RepeatBox.IsEnabled) RepeatBox.IsChecked = false;
+        RepeatHint.Text = hold ? "Not needed: the key is held down for as long as you hold yours."
+            : RunsOnRelease ? "On one keyboard only, an ordinary key runs when you let go, so it can't repeat."
+            : "Holding the key runs it again and again, like holding a volume key.";
+
+        ShortcutLabel.Text = hold ? "Key to act as" : "Key combination to press";
+        RecordBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, ShortcutLabel.Text);
+        ShortcutHint.Text = !hold ? "Click the box and press the keys, or build it below."
+            : RunsOnRelease ? "On one keyboard only, an ordinary key can't be held: it presses this key once when you let go. Pick Any keyboard to hold it."
+            : "It's held down for as long as you hold your key. To make it act as Ctrl, Shift, Alt or Win, press just that key, or pick it from the list.";
+    }
+
+    void TypeMethodBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (TypeMethodHint is null) return; // during InitializeComponent
+        TypeMethodHint.Text = TypeMethodBox.SelectedIndex switch
+        {
+            1 => "Presses real keys, a little slower. For games and remote desktop windows that ignore typed text. " +
+                 "Characters your keyboard can't type are typed directly.",
+            2 => "Puts the text on the clipboard, presses Ctrl + V, then puts your clipboard back. " +
+                 "The text isn't kept in clipboard history.",
+            _ => "Types the characters directly. Works in almost every app.",
+        };
+    }
+
     // ------------------------------------------------------------------ action
 
     void ActionTile_Checked(object sender, RoutedEventArgs e)
     {
         if (tiles is null) return; // during InitializeComponent
-        foreach (var (tile, (_, panel)) in tiles) panel.Visibility = tile.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        var shown = tiles.FirstOrDefault(t => t.Key.IsChecked == true).Value.Panel; // two tiles share a panel
+        foreach (var (_, (_, panel)) in tiles) panel.Visibility = panel == shown ? Visibility.Visible : Visibility.Collapsed;
+        UpdateHoldOptions();
         UpdateNamePlaceholder();
     }
 
@@ -369,6 +414,7 @@ internal partial class ShortcutEditor : Window
         for (int vk = 0x60; vk <= 0x69; vk++) yield return new KeyItem(vk, KeyNames.Vk(vk));
         foreach (int vk in (int[])[0x6A, 0x6B, 0x6D, 0x6E, 0x6F]) yield return new KeyItem(vk, KeyNames.Vk(vk));
         for (int vk = 0xA6; vk <= 0xB7; vk++) yield return new KeyItem(vk, KeyNames.Vk(vk));
+        foreach (int vk in (int[])[0xA2, 0xA3, 0xA0, 0xA1, 0xA4, 0xA5, 0x5B, 0x5C]) yield return new KeyItem(vk, KeyNames.Vk(vk));
     }
 
     // ------------------------------------------------------------------ key combination recorder
@@ -400,16 +446,27 @@ internal partial class ShortcutEditor : Window
         if (KeyNames.IsModifier(vk))
         {
             RecordBox.Text = KeyNames.ModText(mods | KeyNames.ModFlag(vk)) + "…";
+            loneModifier = vk;
             return;
         }
+        loneModifier = 0;
         RecordKey(vk, mods);
     }
 
     void RecordBox_PreviewKeyUp(object sender, KeyEventArgs e)
     {
+        int vk = VirtualKey(e);
         // Print Screen never sends a key-down to apps.
-        if (VirtualKey(e) == 0x2C) RecordKey(0x2C, CurrentModifiers());
+        if (vk == 0x2C) RecordKey(0x2C, CurrentModifiers());
+        // A modifier pressed and let go on its own is the key itself (e.g. act as Ctrl).
+        else if (vk != 0 && vk == loneModifier)
+        {
+            loneModifier = 0;
+            RecordKey(vk, CurrentModifiers() & ~KeyNames.ModFlag(vk));
+        }
     }
+
+    int loneModifier;
 
     void RecordKey(int vk, int mods)
     {
@@ -465,12 +522,14 @@ internal partial class ShortcutEditor : Window
         TargetBox.Text = a.Target ?? "";
         ArgsBox.Text = a.Arguments ?? "";
         TypedTextBox.Text = a.Text ?? "";
+        TypeMethodBox.SelectedIndex = (int)a.TypeMethod;
         CommandBox.Text = a.Command ?? "";
         HideBox.IsChecked = a.HideWindow;
         BuiltInBox.SelectedItem = BuiltInBox.Items.Cast<BuiltInItem>().FirstOrDefault(b => b.Action == a.BuiltIn) ?? BuiltInBox.Items[0];
         if (a.ShortcutVk != 0) RecordKey(a.ShortcutVk, a.ShortcutMods);
         SetTrigger(m.Trigger, fromSaved: true);
         if (BlockBox.IsEnabled) BlockBox.IsChecked = m.BlockOriginal;
+        if (RepeatBox.IsEnabled) RepeatBox.IsChecked = m.RepeatWhileHeld;
     }
 
     void Save_Click(object sender, RoutedEventArgs e)
@@ -495,14 +554,19 @@ internal partial class ShortcutEditor : Window
                 action.Target = TargetBox.Text.Trim();
                 action.Arguments = ArgsBox.Text.Trim();
                 break;
-            case ActionType.SendShortcut:
-                if (KeyBox.SelectedItem is not KeyItem key) { Fail("Choose the key combination to press.", RecordBox); return; }
+            case ActionType.SendShortcut or ActionType.HoldKey:
+                if (KeyBox.SelectedItem is not KeyItem key)
+                {
+                    Fail(action.Type == ActionType.HoldKey ? "Choose the key to act as." : "Choose the key combination to press.", RecordBox);
+                    return;
+                }
                 action.ShortcutVk = key.Vk;
-                action.ShortcutMods = ShortcutMods;
+                action.ShortcutMods = ShortcutMods & ~KeyNames.ModFlag(key.Vk);
                 break;
             case ActionType.TypeText:
                 if (TypedTextBox.Text.Length == 0) { Fail("Enter the text to type.", TypedTextBox); return; }
                 action.Text = TypedTextBox.Text;
+                action.TypeMethod = (TypeMethod)Math.Max(0, TypeMethodBox.SelectedIndex);
                 break;
             case ActionType.BuiltIn:
                 action.BuiltIn = (BuiltInBox.SelectedItem as BuiltInItem)?.Action ?? BuiltInAction.PlayPause;
@@ -521,6 +585,7 @@ internal partial class ShortcutEditor : Window
             Name = string.IsNullOrWhiteSpace(NameBox.Text) ? effective.Description : NameBox.Text.Trim(),
             Enabled = existing?.Enabled ?? true,
             BlockOriginal = effective.Kind == TriggerKind.Key && BlockBox.IsEnabled && BlockBox.IsChecked == true,
+            RepeatWhileHeld = RepeatBox.IsEnabled && RepeatBox.IsChecked == true,
             Trigger = effective,
             Action = action,
             ExcludedApps = ExcludedList.Apps,

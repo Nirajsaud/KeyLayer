@@ -45,7 +45,14 @@ internal sealed class Trigger
     };
 }
 
-internal enum ActionType { OpenTarget, SendShortcut, TypeText, BuiltIn, RunCommand, Disable }
+/// <summary>What a shortcut does. <see cref="HoldKey"/> holds a key down for as long as the trigger is held.</summary>
+internal enum ActionType { OpenTarget, SendShortcut, TypeText, BuiltIn, RunCommand, Disable, HoldKey }
+
+/// <summary>
+/// How text is typed: as characters (works almost everywhere), as real key presses (games, remote desktop), or by
+/// pasting it through the clipboard (fast for long text).
+/// </summary>
+internal enum TypeMethod { Normal, Keys, Paste }
 
 internal sealed class ActionSpec
 {
@@ -55,6 +62,7 @@ internal sealed class ActionSpec
     public int ShortcutVk { get; set; }
     public int ShortcutMods { get; set; }
     public string? Text { get; set; }
+    public TypeMethod TypeMethod { get; set; }
     public BuiltInAction BuiltIn { get; set; }
     public string? Command { get; set; }
     public bool HideWindow { get; set; } = true;
@@ -63,6 +71,7 @@ internal sealed class ActionSpec
     {
         ActionType.OpenTarget => "Open " + Short(TargetName(Target)),
         ActionType.SendShortcut => "Press " + KeyNames.Combo(ShortcutMods, ShortcutVk),
+        ActionType.HoldKey => "Act as " + KeyNames.Combo(ShortcutMods, ShortcutVk),
         ActionType.TypeText => "Type \"" + Short(Text?.ReplaceLineEndings(" "), 32) + "\"",
         ActionType.BuiltIn => ActionRunner.Name(BuiltIn),
         ActionType.RunCommand => "Run " + Short(Command),
@@ -90,6 +99,10 @@ internal sealed class Mapping
     public string Name { get; set; } = "";
     public bool Enabled { get; set; } = true;
     public bool BlockOriginal { get; set; } = true;
+
+    /// <summary>Holding the key runs the action again at the keyboard's repeat rate (like holding a volume key).</summary>
+    public bool RepeatWhileHeld { get; set; }
+
     public Trigger Trigger { get; set; } = new();
     public ActionSpec Action { get; set; } = new();
 
