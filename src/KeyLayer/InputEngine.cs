@@ -62,6 +62,7 @@ internal sealed unsafe class InputEngine : IDisposable
     readonly List<Deferred> deferred = [];
     readonly List<ReleaseWait> releaseWaits = [];
     readonly List<PendingObservation> observations = [];
+    readonly List<SignalRow> signalRows = [];
     readonly HashSet<(ushort Page, ushort Usage)> registered = [];
     readonly HashSet<(nint Device, int Vk)> rawHeld = [];
     Thread? thread;
@@ -454,7 +455,7 @@ internal sealed unsafe class InputEngine : IDisposable
             $"Key code 0x{k.vkCode:X2}  (scan {k.scanCode:X2}{(extended ? ", ext" : "")})", trigger);
         if (trigger.KeyboardName is { } named)
         {
-            Raise(row.ToObserved(named));
+            RaiseKey(row.ToObserved(named));
             return;
         }
         observations.Add(row); // shown once Windows says which keyboard it was
@@ -552,7 +553,7 @@ internal sealed unsafe class InputEngine : IDisposable
         }
 
         int vk = KeyNames.Normalize(rawVk);
-        string name = keyboard is not null ? NameOf(keyboard) : handle == 0 ? "Simulated input" : "Unknown keyboard";
+        string name = keyboard is not null ? NameOf(keyboard) : handle == 0 ? FromSoftware : "Unknown keyboard";
 
         if (!down)
         {
@@ -565,15 +566,21 @@ internal sealed unsafe class InputEngine : IDisposable
             }
         }
 
+        // A media key Windows made from a keyboard's signal has no keyboard of its own: the signal names it.
+        if (handle == 0 && KeyNames.HasMediaSignal(vk)) return;
+
         // Key monitor rows waiting for the keyboard's name (a key held back is only named when released).
         if (observations.FirstOrDefault(o => o.Vk == vk) is { } row)
         {
             observations.Remove(row);
             row.Trigger.Keyboard ??= keyboard?.Id;
             row.Trigger.KeyboardName ??= keyboard is null ? null : name;
-            Raise(row.ToObserved(name));
+            RaiseKey(row.ToObserved(name));
         }
     }
+
+    /// <summary>What the Key monitor shows for keys that come from software rather than a keyboard.</summary>
+    const string FromSoftware = "Windows or another app";
 
     /// <summary>
     /// Keys while a KeyLayer window is active (the hook isn't called then): feed the Key monitor and key capture,
@@ -606,9 +613,15 @@ internal sealed unsafe class InputEngine : IDisposable
         int mods = CurrentModifiers(rawFnHeld ? fnVk : 0) & ~KeyNames.ModFlag(vk);
         if (rawFnHeld && !KeyNames.IsModifier(vk)) mods |= KeyNames.Fn;
         var trigger = WithKeyboard(Trigger.ForKey(vk, mods), handle, keyboard);
+        if (keyboard is null && TakeMediaSignal(vk, MediaWindowMs) is { } media)
+        {
+            // A media key Windows made from a keyboard's signal: that keyboard is the one that sent it.
+            trigger.Keyboard = media.Keyboard;
+            trigger.KeyboardName = media.Name;
+        }
 
         if (MonitorEnabled)
-            Raise(new ObservedInput(DateTime.Now, "Key", $"Key code 0x{vk:X2}", trigger.Description, trigger.KeyboardName!, trigger));
+            RaiseKey(new ObservedInput(DateTime.Now, "Key", $"Key code 0x{vk:X2}", trigger.Description, trigger.KeyboardName!, trigger));
 
         if (capture is { } cap)
         {
@@ -628,7 +641,7 @@ internal sealed unsafe class InputEngine : IDisposable
     Trigger WithKeyboard(Trigger t, nint handle, KeyboardInfo? keyboard)
     {
         t.Keyboard = keyboard?.Id;
-        t.KeyboardName = keyboard is not null ? NameOf(keyboard) : handle == 0 ? "Simulated input" : "Unknown keyboard";
+        t.KeyboardName = keyboard is not null ? NameOf(keyboard) : handle == 0 ? FromSoftware : "Unknown keyboard";
         return t;
     }
 
@@ -651,11 +664,24 @@ internal sealed unsafe class InputEngine : IDisposable
             KeyboardName = keyboardName,
         };
 
+        var signalRow = new ObservedInput(DateTime.Now, "Signal", signal.Code, signal.Meaning, keyboardName, trigger);
+        bool shown = !MonitorEnabled;
         foreach (var (page, usage) in signal.Usages)
-            if (page == 0x0C && KeyNames.ConsumerToVk.TryGetValue(usage, out int vk))
-                OnMediaSignal(device.KeyboardId, keyboardName, vk);
-
-        if (MonitorEnabled) Raise(new ObservedInput(DateTime.Now, "Signal", signal.Code, signal.Meaning, keyboardName, trigger));
+        {
+            if (page != 0x0C || !KeyNames.ConsumerToVk.TryGetValue(usage, out int vk)) continue;
+            // Windows also turns this signal into a key press: the Key monitor shows the two as one row.
+            if (OnMediaSignal(device.KeyboardId, keyboardName, vk, shown ? null : signalRow))
+            {
+                shown = true;
+            }
+            else if (!shown)
+            {
+                signalRows.Add(new SignalRow(vk, Environment.TickCount, signalRow));
+                StartResolveTimer();
+                shown = true;
+            }
+        }
+        if (!shown) Raise(signalRow);
 
         if (capture is { } cap)
         {
@@ -671,11 +697,12 @@ internal sealed unsafe class InputEngine : IDisposable
 
     /// <summary>
     /// A media signal names the keyboard behind the key code Windows makes from it. The key code may already be
-    /// waiting (held key, unshown monitor row) or may arrive just after.
+    /// waiting (held key, unshown monitor row) or may arrive just after. Returns true when it was waiting as a
+    /// monitor row, which then also carries <paramref name="signalRow"/>.
     /// </summary>
-    void OnMediaSignal(string keyboard, string name, int vk)
+    bool OnMediaSignal(string keyboard, string name, int vk, ObservedInput? signalRow)
     {
-        bool used = false;
+        bool used = false, merged = false;
         if (deferred.FirstOrDefault(d => d.Vk == vk) is { } waiting)
         {
             ResolveDeferred(waiting, keyboard);
@@ -686,15 +713,36 @@ internal sealed unsafe class InputEngine : IDisposable
             observations.Remove(row);
             row.Trigger.Keyboard = keyboard;
             row.Trigger.KeyboardName = name;
-            Raise(row.ToObserved(name));
+            var keyRow = row.ToObserved(name);
+            Raise(signalRow is null ? keyRow : Merge(keyRow, signalRow));
             used = true;
+            merged = signalRow is not null;
         }
-        if (used) return;
-
-        int now = Environment.TickCount;
-        recentMedia.RemoveAll(r => now - r.Tick > 1000);
-        recentMedia.Add(new MediaSignal(keyboard, name, vk, now));
+        if (!used)
+        {
+            int now = Environment.TickCount;
+            recentMedia.RemoveAll(r => now - r.Tick > 1000);
+            recentMedia.Add(new MediaSignal(keyboard, name, vk, now));
+        }
+        return merged;
     }
+
+    /// <summary>Shows a key row; a media key's row also takes in the signal it was made from.</summary>
+    void RaiseKey(ObservedInput row)
+    {
+        int vk = row.Trigger.Vk;
+        if (KeyNames.HasMediaSignal(vk) && signalRows.FirstOrDefault(s => s.Vk == vk) is { } pending)
+        {
+            signalRows.Remove(pending);
+            row.Trigger.Keyboard ??= pending.Row.Trigger.Keyboard;
+            row.Trigger.KeyboardName = pending.Row.Trigger.KeyboardName;
+            row = Merge(row, pending.Row);
+        }
+        Raise(row);
+    }
+
+    static ObservedInput Merge(ObservedInput keyRow, ObservedInput signalRow) =>
+        keyRow with { Signal = $"Media key  ·  {signalRow.Signal}", Device = signalRow.Device };
 
     MediaSignal? TakeMediaSignal(int vk, int windowMs)
     {
@@ -887,9 +935,15 @@ internal sealed unsafe class InputEngine : IDisposable
         foreach (var row in observations.Where(o => now - o.Tick >= ObservationMs).ToList())
         {
             observations.Remove(row);
-            Raise(row.ToObserved("Unknown keyboard"));
+            RaiseKey(row.ToObserved("Unknown keyboard"));
         }
-        if (deferred.Count == 0 && releaseWaits.Count == 0 && observations.Count == 0)
+        // A media signal whose key press never showed up: show the signal on its own.
+        foreach (var pending in signalRows.Where(s => now - s.Tick >= MediaWindowMs).ToList())
+        {
+            signalRows.Remove(pending);
+            Raise(pending.Row);
+        }
+        if (deferred.Count == 0 && releaseWaits.Count == 0 && observations.Count == 0 && signalRows.Count == 0)
             Native.KillTimer(window!.Handle, ResolveTimer);
     }
 
@@ -938,6 +992,9 @@ internal sealed unsafe class InputEngine : IDisposable
     }
 
     sealed record MediaSignal(string Keyboard, string Name, int Vk, int Tick);
+
+    /// <summary>A media signal's Key monitor row, waiting to be merged with the key press Windows makes from it.</summary>
+    sealed record SignalRow(int Vk, int Tick, ObservedInput Row);
 
     /// <summary>A swallowed media/launch key waiting to learn which keyboard sent it.</summary>
     sealed class Deferred(int vk, int mods, int tick)
