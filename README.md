@@ -4,6 +4,28 @@ Custom shortcuts for every keyboard on your Windows PC, including the Fn keys th
 
 Got a laptop keyboard and an external one? Each can have its own shortcuts. No Fn key? Pick a key to act as one.
 
+## Download
+
+Get the latest version from the [**Releases page**](https://github.com/Nirajsaud/KeyLayer/releases/latest):
+
+- **`KeyLayer-…-win-x64.zip`**: unzip it anywhere and run `KeyLayer.exe`. Nothing else to install.
+- `KeyLayer-…-win-x64-needs-dotnet.exe`: a 1 MB version, if you already have the
+  [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+### "Windows protected your PC"
+
+KeyLayer isn't code-signed yet (signing certificates cost money), so the first time you run it Windows SmartScreen
+may show **Windows protected your PC**. Click **More info**, then **Run anyway**. You only need to do this once.
+
+Some antivirus programs are wary of any app that watches the keyboard, because keyloggers do that too. If yours
+complains, you can:
+
+- read what KeyLayer does with your key presses under [Privacy](#privacy) (nothing leaves your PC),
+- check that your download matches `SHA256SUMS.txt` on the release page:
+  `Get-FileHash KeyLayer-…-win-x64.zip` in PowerShell,
+- or [build it yourself](#building) from the source. Every release is built from this repository by
+  [GitHub Actions](https://github.com/Nirajsaud/KeyLayer/actions), not on someone's PC.
+
 ## Features
 
 ### Shortcuts
@@ -87,8 +109,9 @@ KeyLayer sees every key you press, because that's how it works, so here's exactl
 
 ## Requirements
 
-- Windows 10 or 11
-- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+- Windows 11, 64-bit (Windows 10 should work too, but it hasn't been tested much yet)
+- Nothing else for the `.zip` download. The small `needs-dotnet` exe needs the
+  [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ## Getting started
 
@@ -139,12 +162,32 @@ A shortcut takes over its key in every app, and apps don't tell Windows which sh
 
 ## Building
 
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+
 ```bash
 dotnet publish src/KeyLayer/KeyLayer.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist
 ```
 
+For a version that runs without .NET installed, use `--self-contained true` and add
+`-p:IncludeNativeLibrariesForSelfExtract=true`.
+
 `KeyLayer.exe --selftest out.txt` writes what the app can see (keyboards, HID devices, hook status) to a file. That's
 handy when reporting a problem.
+
+### Releases
+
+Every push is built by [GitHub Actions](.github/workflows/build.yml). To publish a release, update the version in
+`src/KeyLayer/KeyLayer.csproj` and the notes in `.github/release-notes.md`, then push a tag:
+
+```bash
+git tag v1.2.0
+```
+
+```bash
+git push origin v1.2.0
+```
+
+The workflow builds both downloads, checks that the app starts, and publishes them with their checksums.
 
 ## License
 
