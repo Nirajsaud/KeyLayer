@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Forms = System.Windows.Forms;
@@ -32,6 +33,10 @@ internal partial class App : Application
         base.OnStartup(e);
         Forms.Application.EnableVisualStyles();
         DispatcherUnhandledException += OnUnhandledException;
+
+        // Draw without the GPU. The window is a few cards and buttons, and using the GPU loads the graphics
+        // driver into the process, which costs well over 100 MB of memory.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
 
         Config = store.Load();
         KeyNames.CustomFnVk = Config.CustomFnVk;
@@ -74,6 +79,7 @@ internal partial class App : Application
             MessageBox.Show(error, "KeyLayer", MessageBoxButton.OK, MessageBoxImage.Warning);
 
         if (!StartHidden) ShowMain();
+        else TrimMemorySoon();
     }
 
     void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
@@ -109,7 +115,17 @@ internal partial class App : Application
 
     public void ShowMain()
     {
-        window ??= new MainWindow(this);
+        if (window is null)
+        {
+            // The window is built when it's opened and let go when it's closed, so the tray app stays small.
+            window = new MainWindow(this);
+            window.Closed += (_, _) =>
+            {
+                window = null;
+                Engine.AppInForeground = false;
+                if (!Quitting) TrimMemorySoon();
+            };
+        }
         window.Show();
         // Ask Windows directly: a window started minimized (by whoever launched us) isn't reflected in WindowState.
         var handle = new WindowInteropHelper(window).Handle;
@@ -119,6 +135,24 @@ internal partial class App : Application
             Native.ShowWindow(handle, 9 /* SW_RESTORE */);
         }
         window.Activate();
+    }
+
+    /// <summary>
+    /// Shortly after the window closes (or a start in the tray), frees what it used and hands unused memory back to
+    /// Windows. Pages KeyLayer still needs come straight back the next time they're used.
+    /// </summary>
+    void TrimMemorySoon()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (window is not null) return; // opened again meanwhile
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            Native.SetProcessWorkingSetSize(-1 /* this process */, -1, -1);
+        };
+        timer.Start();
     }
 
     public void Notify(string title, string text, Forms.ToolTipIcon icon) =>

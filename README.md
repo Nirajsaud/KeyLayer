@@ -20,7 +20,8 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
   screen brightness · lock / sleep · screenshot, show desktop, task view and more · run a command · switch a key off.
 - **Test keys** page that shows exactly what each key press sends, and from which keyboard.
 
-It runs quietly in the system tray. The window follows the Windows 11 look and your light/dark and accent settings.
+It runs quietly in the system tray and uses only a few MB of memory while its window is closed. The window follows the
+Windows 11 look and your light/dark and accent settings.
 Settings are saved in `%APPDATA%\KeyLayer\config.json`.
 
 ## Requirements

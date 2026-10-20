@@ -16,6 +16,9 @@
     <Product>KeyLayer</Product>
     <Version>1.1.0</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- A tray app: no background GC thread, and keep the heap small rather than fast to grow -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>false</TieredPGO>
     <!-- WPF's Fluent theme (ThemeMode) is still marked experimental -->
     <!-- WFO0003: WinForms would set DPI awareness in code; this is a WPF app, which uses the manifest -->
     <NoWarn>$(NoWarn);WPF0001;WFO0003</NoWarn>

@@ -52,22 +52,19 @@ internal partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!app.Quitting)
+        // Closing the window keeps KeyLayer running in the tray. The window itself goes, to free its memory;
+        // opening KeyLayer again builds a new one.
+        if (!app.Quitting && !app.Config.TrayTipShown)
         {
-            // Closing the window keeps KeyLayer running in the tray.
-            e.Cancel = true;
-            Hide();
-            if (!app.Config.TrayTipShown)
-            {
-                app.Notify("KeyLayer is still running",
-                    "Your shortcuts keep working in the background. Right-click the tray icon to quit.",
-                    System.Windows.Forms.ToolTipIcon.Info);
-                app.Config.TrayTipShown = true;
-                app.SaveConfig();
-            }
-            return;
+            app.Notify("KeyLayer is still running",
+                "Your shortcuts keep working in the background. Right-click the tray icon to quit.",
+                System.Windows.Forms.ToolTipIcon.Info);
+            app.Config.TrayTipShown = true;
+            app.SaveConfig();
         }
 
+        activityTimer.Stop();
+        app.Engine.MonitorEnabled = false;
         app.Engine.Observed -= OnObserved;
         app.Engine.KeyboardsChanged -= OnKeyboardsChanged;
         app.Engine.KeyboardActivity -= OnKeyboardActivity;

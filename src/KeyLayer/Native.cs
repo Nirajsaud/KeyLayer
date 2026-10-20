@@ -65,6 +65,7 @@ internal static unsafe class Native
     [DllImport("user32.dll")] public static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool ShowWindow(nint hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool IsIconic(nint hWnd);
+    [DllImport("kernel32.dll")] public static extern bool SetProcessWorkingSetSize(nint process, nint minimum, nint maximum);
 
     // ---- Windows and the apps they belong to ----
 
