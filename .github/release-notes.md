@@ -4,7 +4,6 @@
 |---|---|
 | **KeyLayer-Setup.exe** | **Start here.** Installs KeyLayer just for you (no admin rights), with a Start menu shortcut and an uninstall entry in Settings › Apps. Nothing else to install. |
 | KeyLayer-…-win-x64.zip | Portable: unzip it anywhere and run `KeyLayer.exe`. Nothing is installed. |
-| KeyLayer-…-win-x64-needs-dotnet.exe | A 1 MB version for PCs that already have the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). |
 | SHA256SUMS.txt | Checksums, to check your download is the real one. |
 
 **"Windows protected your PC"?** KeyLayer isn't code-signed yet, so Windows SmartScreen may warn the first time you
@@ -16,6 +15,7 @@ run it. Click **More info**, then **Run anyway**. KeyLayer is open source and se
 - **An installer.** Download, run, done: KeyLayer goes into the Start menu, can start when you sign in, and can be
   uninstalled from Settings like any other app. Updating keeps your shortcuts; uninstalling asks whether to keep them.
 - The zip is still here for anyone who prefers a portable app.
+- One less download to choose from: everything KeyLayer needs is built in, so there's nothing else to install.
 
 ## What KeyLayer does
 

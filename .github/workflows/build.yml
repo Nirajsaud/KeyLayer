@@ -36,12 +36,6 @@ jobs:
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none
           -p:Version=${{ steps.version.outputs.version }} -o out/standalone
 
-      - name: Build the small exe (needs the .NET 10 Desktop Runtime)
-        run: >
-          dotnet publish src/KeyLayer/KeyLayer.csproj -c Release -r win-x64 --self-contained false
-          -p:PublishSingleFile=true -p:DebugType=none
-          -p:Version=${{ steps.version.outputs.version }} -o out/small
-
       - name: Check that it starts
         timeout-minutes: 3
         shell: pwsh
@@ -92,7 +86,6 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           New-Item -ItemType Directory release -Force | Out-Null
           Compress-Archive out/standalone/KeyLayer.exe "release/KeyLayer-$v-win-x64.zip"
-          Copy-Item out/small/KeyLayer.exe "release/KeyLayer-$v-win-x64-needs-dotnet.exe"
           Get-ChildItem release | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
             Set-Content release/SHA256SUMS.txt
           Get-Content release/SHA256SUMS.txt

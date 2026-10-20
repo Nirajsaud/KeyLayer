@@ -12,12 +12,9 @@ Run **`KeyLayer-Setup.exe`** and click through. It installs just for you (no adm
 the Start menu, can start it when you sign in, and can be removed any time from **Settings › Apps › Installed apps**.
 Nothing else needs installing.
 
-Other downloads are on the [Releases page](https://github.com/Nirajsaud/KeyLayer/releases/latest):
-
-- **Portable:** `KeyLayer-…-win-x64.zip`. Unzip it anywhere and run `KeyLayer.exe`; nothing is installed.
-  Keep it somewhere permanent (not Downloads) if you turn on *Start with Windows*.
-- **Small:** `KeyLayer-…-win-x64-needs-dotnet.exe`, 1 MB, if you already have the
-  [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+Prefer not to install anything? The [Releases page](https://github.com/Nirajsaud/KeyLayer/releases/latest) also has a
+**portable** version, `KeyLayer-…-win-x64.zip`: unzip it anywhere and run `KeyLayer.exe`. Keep it somewhere permanent
+(not Downloads) if you turn on *Start with Windows*.
 
 Your shortcuts are kept in `%APPDATA%\KeyLayer`, so they survive updates. To update, just run the newer setup.
 When you uninstall, you're asked whether to delete them too.
@@ -120,8 +117,7 @@ KeyLayer sees every key you press, because that's how it works, so here's exactl
 ## Requirements
 
 - Windows 11, 64-bit (Windows 10 should work too, but it hasn't been tested much yet)
-- Nothing else for the installer or the portable zip. The small `needs-dotnet` exe needs the
-  [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+- Nothing else: everything KeyLayer needs is included in the download.
 
 ## Getting started
 
