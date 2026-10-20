@@ -59,8 +59,9 @@ internal static class ActionRunner
                 SendShortcut(a.ShortcutMods, a.ShortcutVk);
                 break;
             case ActionType.TypeText:
-                InputSender.ReleaseHeldModifiers(0);
-                InputSender.Text(a.Text ?? "");
+                var lifted = InputSender.ReleaseHeldModifiers(0);
+                try { InputSender.Text(a.Text ?? ""); }
+                finally { InputSender.RestoreModifiers(lifted); }
                 break;
             case ActionType.BuiltIn:
                 RunBuiltIn(a.BuiltIn);
@@ -75,8 +76,9 @@ internal static class ActionRunner
 
     static void SendShortcut(int mods, int vk)
     {
-        InputSender.ReleaseHeldModifiers(mods);
-        InputSender.Shortcut(mods, vk);
+        var lifted = InputSender.ReleaseHeldModifiers(mods);
+        try { InputSender.Shortcut(mods, vk); }
+        finally { InputSender.RestoreModifiers([.. lifted, .. InputSender.ModifierVks(mods)]); }
     }
 
     static void RunBuiltIn(BuiltInAction action)

@@ -75,24 +75,53 @@ internal static class InputSender
         if (inputs.Count > 0) Send([.. inputs]);
     }
 
-    /// <summary>
-    /// Lifts modifier keys that are still physically held (e.g. from the triggering combo), except the ones in
-    /// <paramref name="keep"/>, so they don't mix into what we are about to send.
-    /// </summary>
-    public static void ReleaseHeldModifiers(int keep)
+    static readonly int[] modifierVks = [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C];
+
+    // Modifiers the user's fingers are on, one bit per entry of modifierVks. Once we lift a held modifier, Windows
+    // reports it as up, so the keyboard hook keeps track of the real key presses instead.
+    static int physicalModifiers;
+
+    /// <summary>Called for real (not injected) key presses and releases.</summary>
+    public static void NotePhysical(int vk, bool down)
     {
-        var ups = new List<INPUT>();
-        foreach (int vk in (int[])[0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C])
-        {
-            if ((Native.GetAsyncKeyState(vk) & 0x8000) == 0 || (keep & KeyNames.ModFlag(vk)) != 0) continue;
-            ups.Add(Key(vk, up: true));
-        }
-        if (ups.Count == 0) return;
-        ups.InsertRange(0, [Key(VK_MASK, up: false), Key(VK_MASK, up: true)]);
-        Send([.. ups]);
+        int bit = Array.IndexOf(modifierVks, vk);
+        if (bit < 0) return;
+        if (down) Interlocked.Or(ref physicalModifiers, 1 << bit);
+        else Interlocked.And(ref physicalModifiers, ~(1 << bit));
     }
 
-    static List<int> ModifierVks(int mods)
+    /// <summary>
+    /// Lifts modifier keys that are still held (e.g. from the triggering combo), except the ones in
+    /// <paramref name="keep"/>, so they don't mix into what we are about to send. Returns the keys it lifted.
+    /// </summary>
+    public static List<int> ReleaseHeldModifiers(int keep)
+    {
+        var lifted = modifierVks.Where(vk => (Native.GetAsyncKeyState(vk) & 0x8000) != 0 && (keep & KeyNames.ModFlag(vk)) == 0).ToList();
+        if (lifted.Count == 0) return lifted;
+        Send([Key(VK_MASK, up: false), Key(VK_MASK, up: true), .. lifted.Select(vk => Key(vk, up: true))]);
+        return lifted;
+    }
+
+    /// <summary>
+    /// Presses modifiers we let go of back down if the user is still holding them, so holding Ctrl and pressing a
+    /// shortcut twice runs it twice. Never throws: it runs after the action, whatever happened there.
+    /// </summary>
+    public static void RestoreModifiers(IEnumerable<int> released)
+    {
+        int held = Volatile.Read(ref physicalModifiers);
+        var downs = released.Distinct()
+            .Where(vk => Array.IndexOf(modifierVks, vk) is var bit and >= 0 && (held & (1 << bit)) != 0)
+            .Select(vk => Key(vk, up: false))
+            .ToList();
+        if (downs.Count == 0) return;
+        // Keep Win or Alt from opening Start or a menu bar when the user lets go of them later.
+        downs.Add(Key(VK_MASK, up: false));
+        downs.Add(Key(VK_MASK, up: true));
+        SendInput((uint)downs.Count, [.. downs], Marshal.SizeOf<INPUT>());
+    }
+
+    /// <summary>The modifier keys <see cref="Shortcut"/> presses for these modifier flags.</summary>
+    public static List<int> ModifierVks(int mods)
     {
         var list = new List<int>(4);
         if ((mods & KeyNames.Ctrl) != 0) list.Add(0xA2);

@@ -268,6 +268,8 @@ internal static unsafe partial class RawDevices
         return "";
     }
 
-    [GeneratedRegex(@"VID[_&](?:0\d)?([0-9A-F]{4})[_&]PID[_&]([0-9A-F]{4})", RegexOptions.IgnoreCase)]
+    // USB "VID_1A2C&PID_90FE", Bluetooth LE "VID&02046D_PID&B35B", classic Bluetooth "VID&0002046D_PID&B342":
+    // the Bluetooth forms put a 2- or 4-digit vendor ID source in front of the vendor ID.
+    [GeneratedRegex(@"VID[_&](?:[0-9A-F]{2}){0,2}?([0-9A-F]{4})[_&]PID[_&]([0-9A-F]{4})", RegexOptions.IgnoreCase)]
     private static partial Regex VidPidRegex();
 }

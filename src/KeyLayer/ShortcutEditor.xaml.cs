@@ -71,6 +71,10 @@ internal partial class ShortcutEditor : Window
         // While waiting for a key, keep it from also pressing buttons here (Enter = Save, Esc = Cancel, ...).
         PreviewKeyDown += (_, e) => { if (capturing) e.Handled = true; };
         PreviewKeyUp += (_, e) => { if (capturing) e.Handled = true; };
+
+        // Typing here (say, recording Ctrl + S as the combination to press) shouldn't run your shortcuts.
+        app.Engine.Editing = true;
+        Closed += (_, _) => app.Engine.Editing = false;
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -242,15 +246,17 @@ internal partial class ShortcutEditor : Window
         var clash = others.FirstOrDefault(m => m.Trigger.MatchKey == match);
         string? message = clash is not null
             ? $"This key already has a shortcut for this keyboard (“{clash.Action.Describe()}”). Saving will replace it."
-            : WarningFor(trigger);
+            : WarningFor(trigger, fnOff: app.Config.CustomFnVk == 0);
         if (message is null) WarningBar.Visibility = Visibility.Collapsed;
         else ShowWarning(message);
     }
 
-    static string? WarningFor(Trigger t) =>
+    static string? WarningFor(Trigger t, bool fnOff) =>
         t is { Kind: TriggerKind.Hid, UsagePage: 0x01 }
             ? "This is a system power signal. Windows will still do its own thing (like going to sleep), and that part can't be switched off."
-            : null;
+            : t.Kind == TriggerKind.Key && (t.Modifiers & KeyNames.Fn) != 0 && fnOff
+                ? "The custom Fn key is off, so this shortcut can't run. Pick a Fn key in Settings, or capture a different key."
+                : null;
 
     /// <summary>Says whether the key takes over a shortcut Windows or other apps use, and offers a Fn-key combination instead.</summary>
     void UpdateClash()

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace KeyLayer;
 
@@ -42,6 +43,7 @@ internal sealed unsafe class InputEngine : IDisposable
     const int DeferMs = 250;              // how long a held media key waits to learn its keyboard
     const int ReleaseMs = 500;            // how long a released key waits for Windows to name its keyboard
     const int ObservationMs = 1500;       // how long a Key monitor row waits for the keyboard's name
+    const int HookSilentMs = 2000;        // real key presses the hook hasn't seen for this long: it was dropped
     const int RawBufferSize = 64 * 1024;
 
     enum KeyAction { Pass, Block, BlockUntilRelease }
@@ -70,6 +72,7 @@ internal sealed unsafe class InputEngine : IDisposable
     MessageWindow? window;
     nint hook;
     Native.LowLevelKeyboardProc? hookProc;
+    int lastHookTick, lastHookInstallTick, hookInstalls;
     nint rawBuffer, drainBuffer;
     volatile Dictionary<string, Mapping> table = [];
     volatile HashSet<string> keyboardSpecific = [];
@@ -106,9 +109,15 @@ internal sealed unsafe class InputEngine : IDisposable
             {
                 rawHeld.Clear();
                 rawFnHeld = false;
+                // The hook misses keys released while our window is in front: don't leave the Fn key stuck down.
+                fnHeld = false;
+                held.Remove(CustomFnVk);
             });
         }
     }
+
+    /// <summary>Set while the shortcut editor is open: keys typed into KeyLayer itself then don't run shortcuts.</summary>
+    public volatile bool Editing;
 
     public string? StartError { get; private set; }
 
@@ -251,9 +260,12 @@ internal sealed unsafe class InputEngine : IDisposable
             drainBuffer = Marshal.AllocHGlobal(RawBufferSize);
             window = new MessageWindow(this);
             hookProc = HookCallback;
-            hook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, hookProc, Native.GetModuleHandle(null), 0);
+            InstallHook();
+            hookInstalls = 0;
             if (hook == 0) StartError = $"Couldn't install the keyboard hook (error {Marshal.GetLastWin32Error()}).";
             RefreshDevices();
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            SystemEvents.SessionSwitch += OnSessionSwitch;
         }
         catch (Exception ex)
         {
@@ -270,6 +282,8 @@ internal sealed unsafe class InputEngine : IDisposable
             Native.DispatchMessage(ref msg);
         }
 
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
         if (hook != 0) Native.UnhookWindowsHookEx(hook);
         window?.DestroyHandle();
         foreach (var d in devices.Values) d.Dispose();
@@ -278,16 +292,38 @@ internal sealed unsafe class InputEngine : IDisposable
         Marshal.FreeHGlobal(drainBuffer);
     }
 
+    /// <summary>Installs the keyboard hook, replacing the current one (which Windows may have dropped already).</summary>
+    void InstallHook()
+    {
+        if (hook != 0) Native.UnhookWindowsHookEx(hook);
+        hook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, hookProc!, Native.GetModuleHandle(null), 0);
+        lastHookInstallTick = Environment.TickCount;
+        hookInstalls++;
+    }
+
+    // After sleep or unlocking, put the hook back to be safe (these run on a system thread).
+    void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume) Post(InstallHook);
+    }
+
+    void OnSessionSwitch(object? sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason == SessionSwitchReason.SessionUnlock) Post(InstallHook);
+    }
+
     nint HookCallback(int nCode, nint wParam, nint lParam)
     {
         if (nCode >= 0)
         {
+            lastHookTick = Environment.TickCount;
             try
             {
                 var k = *(Native.KBDLLHOOKSTRUCT*)lParam;
                 if (k.dwExtraInfo != InputSender.Marker)
                 {
                     bool down = wParam == Native.WM_KEYDOWN || wParam == Native.WM_SYSKEYDOWN;
+                    InputSender.NotePhysical((int)k.vkCode, down);
                     if (down ? OnKeyDown(k) : OnKeyUp(k)) return 1;
                 }
             }
@@ -313,7 +349,8 @@ internal sealed unsafe class InputEngine : IDisposable
 
         DrainRawInput(); // media signals that name the keyboard may already be waiting
 
-        if (vk == fnVk && fnVk != 0)
+        // While paused, or while an app with shortcuts off is in front, the Fn key is just a key (it can be held there).
+        if (vk == fnVk && fnVk != 0 && !Paused && !OffIn(AppInFront()))
         {
             // Home-made Fn key. Modifiers pass through so e.g. Right Ctrl + C still copies.
             fnHeld = true;
@@ -604,6 +641,12 @@ internal sealed unsafe class InputEngine : IDisposable
             return;
         }
 
+        // The hook always sees a key before raw input does. A real key press it never saw means Windows dropped
+        // the hook (it does that, without telling, to a hook that once answered too slowly): put it back.
+        int now = Environment.TickCount;
+        if (down && handle != 0 && now - lastHookTick > HookSilentMs && now - lastHookInstallTick > HookSilentMs)
+            InstallHook();
+
         int vk = KeyNames.Normalize(rawVk);
         string name = keyboard is not null ? NameOf(keyboard) : handle == 0 ? FromSoftware : "Unknown keyboard";
 
@@ -640,6 +683,7 @@ internal sealed unsafe class InputEngine : IDisposable
     /// </summary>
     void OnRawKeyInForeground(nint handle, KeyboardInfo? keyboard, int vk, bool down)
     {
+        if (handle != 0) InputSender.NotePhysical(vk, down); // the hook isn't told about these keys
         if (down ? !rawHeld.Add((handle, vk)) : !rawHeld.Remove((handle, vk)) && !KeyNames.IsModifier(vk))
             return; // auto-repeat, or a release we never saw pressed
 
@@ -684,7 +728,7 @@ internal sealed unsafe class InputEngine : IDisposable
                 ArmCapture();
             }
         }
-        else if (!Paused && Lookup(vk, mods, trigger.Keyboard) is { } m)
+        else if (!Paused && !Editing && Lookup(vk, mods, trigger.Keyboard) is { } m)
         {
             Fire(m, mask: false);
         }
@@ -741,7 +785,7 @@ internal sealed unsafe class InputEngine : IDisposable
             else cap.Other ??= trigger;
             ArmCapture();
         }
-        else if (!Paused && table.TryGetValue(trigger.MatchKey, out var m) && RunsInFront(m))
+        else if (!Paused && !(Editing && appInForeground) && table.TryGetValue(trigger.MatchKey, out var m) && RunsInFront(m))
         {
             Fire(m, mask: false);
         }
@@ -1023,7 +1067,7 @@ internal sealed unsafe class InputEngine : IDisposable
     {
         var sb = new StringBuilder();
         sb.AppendLine($"KeyLayer {typeof(InputEngine).Assembly.GetName().Version} on {Environment.OSVersion}");
-        sb.AppendLine($"Keyboard hook: {(hook != 0 ? "installed" : "NOT installed")} {StartError}");
+        sb.AppendLine($"Keyboard hook: {(hook != 0 ? "installed" : "NOT installed")}, put back {hookInstalls} times {StartError}");
         sb.AppendLine($"Custom Fn key: {(CustomFnVk == 0 ? "off" : KeyNames.Vk(CustomFnVk))}");
         sb.AppendLine($"Shortcuts off in: {(excludedApps.Count == 0 ? "no apps" : string.Join(", ", excludedApps))}");
         sb.AppendLine("Keyboards:");

@@ -90,6 +90,8 @@ internal sealed class ShortcutItem : Observable
         if (mapping.ExcludedApps.Count > 0)
             parts.Add("Off in " + string.Join(", ", mapping.ExcludedApps.Select(a => a.Name.Length > 0 ? a.Name : a.Exe)));
         Details = string.Join("  ·  ", parts);
+        if (mapping.Trigger.Kind == TriggerKind.Key && (mapping.Trigger.Modifiers & KeyNames.Fn) != 0 && KeyNames.CustomFnVk == 0)
+            Warning = "Can't run: the custom Fn key is off. Pick one in Settings.";
     }
 
     public Mapping Mapping { get; }
@@ -98,6 +100,9 @@ internal sealed class ShortcutItem : Observable
     public string ActionText { get; }
     public string KeyboardText { get; }
     public string Details { get; }
+
+    /// <summary>Why the shortcut can't run right now, or "".</summary>
+    public string Warning { get; } = "";
 
     public bool Enabled
     {
