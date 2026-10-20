@@ -117,7 +117,8 @@ foreach ($z in $smallSizes) { $b = Small $z[0] $z[1]; SaveBmp $b "small-$($z[0])
 
 # Logo for the goodbye window when uninstalling (installed next to KeyLayer.exe so the uninstaller can show it)
 $b = New-Object System.Drawing.Bitmap 128, 128
-$g = Graphics $b; $g.Clear([System.Drawing.Color]::White); DrawLogo $g 4 4 120 680; $g.Dispose()
+# on the light grey of the goodbye window, so no square shows around the rounded logo
+$g = Graphics $b; $g.Clear([System.Drawing.Color]::FromArgb(240, 240, 240)); DrawLogo $g 4 4 120 680; $g.Dispose()
 SaveBmp $b 'goodbye-logo.bmp'; $b.Dispose()
 $mark.Dispose()
 "artwork written to $Out"

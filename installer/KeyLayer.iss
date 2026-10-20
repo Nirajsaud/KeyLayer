@@ -111,10 +111,13 @@ var
   Title, Body, Link: TNewStaticText;
   Keep, Delete: TNewButton;
 begin
+  // Keep this size: by default Inno Setup stretches custom windows to the wizard's size
 #if Ver >= EncodeVer(6, 6, 0)
-  Form := CreateCustomForm(ScaleX(460), ScaleY(214), False, False);
+  Form := CreateCustomForm(ScaleX(460), ScaleY(214), True, True);
 #else
   Form := CreateCustomForm();
+  Form.KeepSizeX := True;
+  Form.KeepSizeY := True;
   Form.ClientWidth := ScaleX(460);
   Form.ClientHeight := ScaleY(214);
 #endif
@@ -224,6 +227,19 @@ begin
   else
     Result := '';
   end;
+end;
+
+// The Ready to Install page also lists the KeyLayer Fn key that was picked.
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo,
+  MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  Fn: String;
+begin
+  if ChosenFnVk <> 0 then Fn := FnNameFor(ChosenFnVk) else Fn := 'None yet (pick one later in KeyLayer)';
+  if Fn = 'the Menu key' then Fn := 'Menu key';
+  Result := MemoTasksInfo;
+  if Result <> '' then Result := Result + NewLine + NewLine;
+  Result := Result + 'KeyLayer Fn key:' + NewLine + Space + Fn;
 end;
 
 procedure InitializeWizard();
