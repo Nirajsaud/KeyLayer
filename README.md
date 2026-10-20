@@ -4,25 +4,81 @@ Custom shortcuts for every keyboard on your Windows PC, including the Fn keys th
 
 Got a laptop keyboard and an external one? Each can have its own shortcuts. No Fn key? Pick a key to act as one.
 
-## What it does
+## Features
 
-- **Remap Fn combos.** Many keyboards send signals like *Mail*, *Media Player* or *Browser Home* from their Fn row.
-  Windows ignores most of them unless a default app is set up. KeyLayer catches them and runs your action instead.
-- **Per-keyboard shortcuts.** Every connected keyboard is listed, built-in included, and each shortcut can apply to all
-  keyboards or just one.
-- **Your own Fn key.** Choose Caps Lock, Right Ctrl, Menu or similar. Hold it and press another key to run a shortcut;
-  tap it alone and it works as normal. No app uses these combinations, so they never clash with app shortcuts.
-- **Clash check.** When you pick a key, KeyLayer tells you if Windows or common apps already use it (Ctrl + S, Win + E,
-  F5 …) and offers the same key on your Fn key instead.
-- **Turn shortcuts off in chosen apps.** List apps (games, Premiere Pro, Photoshop …) where every key does its normal
-  job, or turn off a single shortcut in some apps.
-- **Actions:** open an app, file, folder or website · press a key combination · type text · media and volume ·
-  screen brightness · lock / sleep · screenshot, show desktop, task view and more · run a command · switch a key off.
-- **Test keys** page that shows exactly what each key press sends, and from which keyboard.
+### Shortcuts
+- **Fn combos.** Many keyboards send signals like *Mail*, *Media Player* or *Browser Home* from their Fn row. Windows
+  ignores most of them unless a default app is set up. KeyLayer catches them and runs your action instead.
+- **Any key or combination** (a single key, or Ctrl / Shift / Alt / Win + a key), plus media, power and
+  vendor-specific signals from external keyboards.
+- **Your own Fn key.** Make Caps Lock, Right Ctrl, Right Alt, Menu, Scroll Lock, Pause or Insert an Fn key. Hold it and
+  press another key to run a shortcut; tap it alone and it does its normal job.
+- **Per keyboard.** Each shortcut works on every keyboard or just one, so the same key can do different things on your
+  laptop and external keyboards.
+- **Key capture.** Click the key box and press the key; KeyLayer records it and the keyboard it came from.
+- **Per-shortcut options:** switch off the key's normal job or keep it, give it a name, turn it on or off, edit,
+  delete, or "Try it now".
 
-It runs quietly in the system tray and uses only a few MB of memory while its window is closed. The window follows the
-Windows 11 look and your light/dark and accent settings.
-Settings are saved in `%APPDATA%\KeyLayer\config.json`.
+### Actions
+- Open an app, file, folder or website (with arguments; `ms-settings:` links work too)
+- Press a key combination (record it or build it from lists)
+- Type text, including new lines and tabs
+- Media and system controls:
+  - play / pause, next, previous, stop · volume up / down, mute · screen brightness up / down
+  - show desktop, Task View, screenshot, clipboard history, emoji panel
+  - minimise or close the current window, previous / next virtual desktop
+  - open File Explorer, Calculator, Task Manager or Windows Settings · lock the PC, sleep
+- Run a command (with or without a window)
+- Switch the key off
+
+### Keyboards
+- Every keyboard is found at startup, without a key press: the laptop's own keyboard (with its hotkeys) as one
+  **Built-in keyboard**, external USB and Bluetooth keyboards, and mouse dongles that can send keys (**receivers**).
+- Keyboards plugged in or out are picked up on the fly.
+- A keyboard's card lights up ("Typing now") when you use it and shows its last key time.
+- Rename keyboards, and filter the shortcut list by keyboard.
+
+### Avoiding clashes with other apps
+- **Clash check:** a key you pick is rated *Won't clash*, *Might clash* or *Windows uses this*, with the reason
+  (e.g. "Almost every app uses Ctrl + S to save").
+- **One-click fix:** "Use Caps Lock + S instead", which also sets up the Fn key if you don't have one yet.
+- **Turn every shortcut off in chosen apps** (games, Premiere Pro …), or **one shortcut** in chosen apps. Pick from the
+  apps you have open, with their icons, or browse for a program.
+- Warnings for a key that already has a shortcut, Fn shortcuts while the Fn key is off, and power keys Windows still
+  acts on.
+
+### Test keys
+- A live list of every key and signal: which keyboard sent it, its code, and whether it's a key or a media signal.
+  A media key and its signal show as one entry; keys sent by software show as "from Windows or another app".
+- **Make shortcut** straight from an entry, or jump to the shortcut a key already has.
+
+### App
+- Runs in the system tray: left-click to open, right-click for Open, Pause shortcuts and Quit.
+- **Pause all shortcuts** from the tray, Settings or the status button in the sidebar.
+- **Start with Windows** (quietly, in the tray). Launching it again just opens the window.
+- Windows 11 look: light, dark or system theme, your accent colour, keyboard and screen reader friendly.
+- A notification when an action fails, and a "Ran: …" note for the last one.
+- Help answers in Settings, **Copy diagnostics** for bug reports, and a button to open the settings folder.
+
+### Under the hood
+- **Lightweight:** about 1 MB of memory in the tray. The window is built when you open it and freed when you close it,
+  and it's drawn without the GPU, so the graphics driver never loads into KeyLayer.
+- **Self-repairing:** if Windows drops the keyboard hook (it can, silently), KeyLayer puts it back, also after sleep
+  and unlocking.
+- Modifiers you're still holding stay held after a shortcut types something, so you can run it again.
+- Shortcuts don't run while you're typing into KeyLayer's own shortcut editor.
+
+## Privacy
+
+KeyLayer sees every key you press, because that's how it works, so here's exactly what it does with them:
+
+- **Nothing leaves your PC.** There's no network code in KeyLayer at all: no updates check, no analytics, no
+  telemetry. (Links you click, like "View on GitHub", or websites your shortcuts open, go through your browser.)
+- **Key presses aren't saved.** They're matched against your shortcuts and forgotten. The Test keys list is only
+  filled while that page is open, is never written to disk, and is gone when you close the window.
+- The only files it writes are your settings (`%APPDATA%\KeyLayer\config.json`: shortcuts, keyboard names, app lists,
+  theme) and, if you ask for it, a diagnostics report listing your keyboards and HID devices.
+- It's open source, so you can check all of this in the code.
 
 ## Requirements
 
@@ -66,6 +122,16 @@ A shortcut takes over its key in every app, and apps don't tell Windows which sh
 - While KeyLayer's own window is active, Windows doesn't let it switch keys off, so shortcuts still run but the key
   also does its normal job. Everywhere else they work as set.
 - Shortcuts don't fire while an app running as administrator is in front, unless KeyLayer also runs as administrator.
+
+## Limitations
+
+- Two keyboards of the exact same model can't be told apart, so they share their shortcuts.
+- Holding a shortcut runs it once; it doesn't repeat while held (e.g. for volume).
+- "Press a key combination" taps the combination. It can't hold a key down for as long as you hold yours, so it's not
+  a full key remapper for games.
+- The clash check knows the shortcuts of Windows and common apps, not every app's own shortcuts.
+- Store apps (like Calculator) all run inside one Windows program, so they can't be turned off one by one.
+- Text typed by a shortcut may not arrive in some games and remote-desktop windows.
 
 ## Building
 
