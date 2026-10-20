@@ -115,5 +115,8 @@ jobs:
         # A tag like v1.2.3-rc.1 is a test build: published as a pre-release, so the Download button keeps
         # pointing at the latest proper release.
         run: |
-          $extra = if ($env:GITHUB_REF_NAME -like '*-*') { @('--prerelease') } else { @() }
-          gh release create $env:GITHUB_REF_NAME (Get-ChildItem release).FullName --title "KeyLayer $env:GITHUB_REF_NAME" --notes-file .github/release-notes.md @extra
+          [string[]] $options = @($env:GITHUB_REF_NAME) + (Get-ChildItem release).FullName +
+                                @('--title', "KeyLayer $env:GITHUB_REF_NAME", '--notes-file', '.github/release-notes.md')
+          if ($env:GITHUB_REF_NAME -like '*-*') { $options += '--prerelease' }
+          gh release create @options
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
