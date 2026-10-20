@@ -92,6 +92,21 @@ internal sealed class Mapping
     public bool BlockOriginal { get; set; } = true;
     public Trigger Trigger { get; set; } = new();
     public ActionSpec Action { get; set; } = new();
+
+    /// <summary>Apps where this shortcut stays off, so the key does its normal job there.</summary>
+    public List<AppRef> ExcludedApps { get; set; } = [];
+}
+
+/// <summary>An app, matched by its program file name (e.g. "Photoshop.exe").</summary>
+internal sealed class AppRef
+{
+    public string Exe { get; set; } = "";
+    public string Name { get; set; } = "";
+
+    /// <summary>Where the program was found, for its icon. Matching only uses <see cref="Exe"/>.</summary>
+    public string? Path { get; set; }
+
+    public bool Is(string? exe) => string.Equals(Exe, exe, StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed class AppConfig
@@ -108,6 +123,9 @@ internal sealed class AppConfig
 
     /// <summary>Names the user gave keyboards, by keyboard ID.</summary>
     public Dictionary<string, string> KeyboardNames { get; set; } = [];
+
+    /// <summary>Apps where no shortcut runs: every key does its normal job while one of them is in front.</summary>
+    public List<AppRef> ExcludedApps { get; set; } = [];
 }
 
 /// <summary>Loads and saves the config as JSON under %APPDATA%\KeyLayer.</summary>

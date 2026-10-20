@@ -52,10 +52,20 @@ internal static class KeyNames
         return $"Key 0x{vk:X2}";
     }
 
+    /// <summary>The key held as the custom Fn key (0 = off), as set in the config.</summary>
+    public static int CustomFnVk { get; set; }
+
+    /// <summary>What the custom Fn key is called on keycaps: the chosen key's own name, e.g. "Caps Lock".</summary>
+    public static string CustomFnName =>
+        CustomFnVk == 0 ? "Custom Fn" : CustomFnChoices.FirstOrDefault(c => c.Vk == CustomFnVk).Name ?? Vk(CustomFnVk);
+
+    /// <summary>The key offered as a custom Fn key when none is set up yet (Caps Lock).</summary>
+    public const int SuggestedFnVk = 0x14;
+
     public static string ModText(int mods)
     {
         var parts = new List<string>(5);
-        if ((mods & Fn) != 0) parts.Add("Custom Fn");
+        if ((mods & Fn) != 0) parts.Add(CustomFnName);
         if ((mods & Ctrl) != 0) parts.Add("Ctrl");
         if ((mods & Shift) != 0) parts.Add("Shift");
         if ((mods & Alt) != 0) parts.Add("Alt");

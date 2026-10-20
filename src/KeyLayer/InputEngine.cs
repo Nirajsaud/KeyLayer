@@ -74,6 +74,11 @@ internal sealed unsafe class InputEngine : IDisposable
     volatile Dictionary<string, Mapping> table = [];
     volatile HashSet<string> keyboardSpecific = [];
     volatile Dictionary<string, string> names = new(StringComparer.OrdinalIgnoreCase);
+    volatile HashSet<string> excludedApps = new(StringComparer.OrdinalIgnoreCase);
+    volatile bool mappingsPerApp;
+    nint frontWindow;
+    uint frontProcess;
+    string? frontExe;
     Capture? capture;
     bool builtInPresent;
     bool fnHeld, fnUsed, rawFnHeld;
@@ -134,16 +139,23 @@ internal sealed unsafe class InputEngine : IDisposable
     {
         var next = new Dictionary<string, Mapping>();
         var specific = new HashSet<string>();
+        bool perApp = false;
         foreach (var m in mappings)
         {
             if (!m.Enabled) continue;
             next[m.Trigger.MatchKey] = m;
+            perApp |= m.ExcludedApps.Count > 0;
             if (m.Trigger.Kind == TriggerKind.Key && m.Trigger.Keyboard is not null)
                 specific.Add(Trigger.KeyMatch(m.Trigger.Vk, m.Trigger.Modifiers));
         }
         table = next;
         keyboardSpecific = specific;
+        mappingsPerApp = perApp;
     }
+
+    /// <summary>Apps where no shortcut runs, by program file name.</summary>
+    public void SetExcludedApps(IEnumerable<AppRef> apps) =>
+        excludedApps = new HashSet<string>(apps.Select(a => a.Exe), StringComparer.OrdinalIgnoreCase);
 
     public void SetKeyboardNames(IReadOnlyDictionary<string, string> userNames) =>
         names = new Dictionary<string, string>(userNames, StringComparer.OrdinalIgnoreCase);
@@ -395,13 +407,20 @@ internal sealed unsafe class InputEngine : IDisposable
     /// <summary>Picks and fires the shortcut for a key press.</summary>
     KeyAction Decide(int vk, int mods, string? keyboard, bool winOrAltDown)
     {
+        string? app = AppInFront();
+        if (OffIn(app)) return KeyAction.Pass;
         var t = table;
-        var anyKeyboard = t.GetValueOrDefault(Trigger.KeyMatch(vk, mods));
+        var anyKeyboard = RunsIn(t.GetValueOrDefault(Trigger.KeyMatch(vk, mods)), app);
 
         if (keyboard is not null)
-            return FireAndBlock(t.GetValueOrDefault(Trigger.KeyMatch(vk, mods, keyboard)) ?? anyKeyboard, winOrAltDown);
+            return FireAndBlock(RunsIn(t.GetValueOrDefault(Trigger.KeyMatch(vk, mods, keyboard)), app) ?? anyKeyboard, winOrAltDown);
 
         if (!keyboardSpecific.Contains(Trigger.KeyMatch(vk, mods)))
+            return FireAndBlock(anyKeyboard, winOrAltDown);
+
+        // None of this key's one-keyboard shortcuts runs in the app in front, so the keyboard doesn't matter.
+        if (app is not null && !t.Values.Any(m => m.Trigger is { Kind: TriggerKind.Key, Keyboard: not null } k
+                                                  && k.Vk == vk && k.Modifiers == mods && RunsIn(m, app) is not null))
             return FireAndBlock(anyKeyboard, winOrAltDown);
 
         // A shortcut on this key is limited to one keyboard, but Windows hasn't said which keyboard this is yet.
@@ -427,9 +446,42 @@ internal sealed unsafe class InputEngine : IDisposable
 
     Mapping? Lookup(int vk, int mods, string? keyboard)
     {
+        string? app = AppInFront();
+        if (OffIn(app)) return null;
         var t = table;
-        return (keyboard is null ? null : t.GetValueOrDefault(Trigger.KeyMatch(vk, mods, keyboard)))
-               ?? t.GetValueOrDefault(Trigger.KeyMatch(vk, mods));
+        return (keyboard is null ? null : RunsIn(t.GetValueOrDefault(Trigger.KeyMatch(vk, mods, keyboard)), app))
+               ?? RunsIn(t.GetValueOrDefault(Trigger.KeyMatch(vk, mods)), app);
+    }
+
+    /// <summary>
+    /// Program file of the window in front (e.g. "Photoshop.exe") when a shortcut depends on it, else null.
+    /// Asked on every key press, so the answer is kept until another window comes to the front.
+    /// </summary>
+    string? AppInFront()
+    {
+        if (excludedApps.Count == 0 && !mappingsPerApp) return null;
+        nint hwnd = Native.GetForegroundWindow();
+        Native.GetWindowThreadProcessId(hwnd, out uint processId);
+        if (hwnd != frontWindow || processId != frontProcess)
+        {
+            frontWindow = hwnd;
+            frontProcess = processId;
+            frontExe = processId != 0 && Apps.ExePath(processId) is { } path ? Path.GetFileName(path) : null;
+        }
+        return frontExe;
+    }
+
+    /// <summary>True when every shortcut is off in this app.</summary>
+    bool OffIn(string? app) => app is not null && excludedApps.Contains(app);
+
+    /// <summary>The shortcut, unless it's switched off in this app.</summary>
+    static Mapping? RunsIn(Mapping? m, string? app) =>
+        m is null || app is null || !m.ExcludedApps.Exists(a => a.Is(app)) ? m : null;
+
+    bool RunsInFront(Mapping m)
+    {
+        string? app = AppInFront();
+        return !OffIn(app) && RunsIn(m, app) is not null;
     }
 
     void ResolveDeferred(Deferred d, string? keyboard)
@@ -689,7 +741,7 @@ internal sealed unsafe class InputEngine : IDisposable
             else cap.Other ??= trigger;
             ArmCapture();
         }
-        else if (!Paused && table.TryGetValue(trigger.MatchKey, out var m))
+        else if (!Paused && table.TryGetValue(trigger.MatchKey, out var m) && RunsInFront(m))
         {
             Fire(m, mask: false);
         }
@@ -973,6 +1025,7 @@ internal sealed unsafe class InputEngine : IDisposable
         sb.AppendLine($"KeyLayer {typeof(InputEngine).Assembly.GetName().Version} on {Environment.OSVersion}");
         sb.AppendLine($"Keyboard hook: {(hook != 0 ? "installed" : "NOT installed")} {StartError}");
         sb.AppendLine($"Custom Fn key: {(CustomFnVk == 0 ? "off" : KeyNames.Vk(CustomFnVk))}");
+        sb.AppendLine($"Shortcuts off in: {(excludedApps.Count == 0 ? "no apps" : string.Join(", ", excludedApps))}");
         sb.AppendLine("Keyboards:");
         foreach (var k in Keyboards) sb.AppendLine($"  {k.Id,-10} {k.Connection,-13} {NameOf(k)}");
         sb.AppendLine("Keyboard devices:");

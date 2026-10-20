@@ -262,7 +262,7 @@
                                    Margin="0,18,0,8" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                         <TextBlock Style="{StaticResource Body}" TextAlignment="Center"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Text="Pick a key or Fn combination and choose what it should do. Not sure what your Fn keys send? Press them on the Test keys page first." />
+                                   Text="Pick a key or Fn combination and choose what it should do. For shortcuts that never clash with other apps, use your Fn and media keys, or set up a custom Fn key in Settings." />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
                             <Button Style="{StaticResource AccentButtonStyle}" Click="AddShortcut_Click" Padding="16,8">
                                 <StackPanel Orientation="Horizontal">
@@ -396,12 +396,31 @@
                                 <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                     <TextBlock Style="{StaticResource Body}" Text="Use a key as your own Fn key" />
                                     <TextBlock Style="{StaticResource Caption}"
-                                               Text="For keyboards without an Fn key, or for more combinations. Hold it and press another key to run a shortcut; tap it on its own and it does its normal job." />
+                                               Text="Hold it and press another key to run a shortcut. No app uses these combinations, so they never clash with app shortcuts. Pressed on its own, the key does its normal job." />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
 
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="Apps" />
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,4">
+                            <StackPanel>
+                                <DockPanel>
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE71D;" Margin="4,0,18,0" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource Body}" Text="Turn shortcuts off in these apps" />
+                                        <TextBlock Style="{StaticResource Caption}"
+                                                   Text="While one of these apps is in front, every key does its normal job, so the app's own shortcuts always work. Handy for games and apps like Premiere Pro or Photoshop." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <local:AppList x:Name="ExcludedAppsList" Margin="38,14,0,0" />
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Style="{StaticResource SectionTitle}" Text="Help" />
+                        <Expander Header="Will my shortcuts clash with other apps' shortcuts?" Margin="0,0,0,4" HorizontalAlignment="Stretch">
+                            <TextBlock Style="{StaticResource Body}" Margin="4,4,4,8"
+                                       Text="A shortcut takes over its key in every app, and apps don't tell Windows which shortcuts they use. So the shortcut editor tells you when a key is likely to clash. Combinations with your custom Fn key, media keys like Mail, and F13 to F24 never clash. You can also turn shortcuts off in chosen apps: all of them under Apps above, or one at a time in a shortcut's options." />
+                        </Expander>
                         <Expander Header="How does the Fn key work?" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                             <TextBlock Style="{StaticResource Body}" Margin="4,4,4,8"
                                        Text="Windows never sees the Fn key: the keyboard handles it itself. When you hold Fn and press another key, the keyboard sends a different signal instead, such as Volume Up, Mail or Calculator. KeyLayer listens for those signals and runs your action instead." />

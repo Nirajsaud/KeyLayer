@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Media;
 
 namespace KeyLayer;
 
@@ -55,7 +57,7 @@ internal static class Keycaps
     public static IReadOnlyList<string> For(int mods, int vk)
     {
         var keys = new List<string>(5);
-        if ((mods & KeyNames.Fn) != 0) keys.Add("Custom Fn");
+        if ((mods & KeyNames.Fn) != 0) keys.Add(KeyNames.CustomFnName);
         if ((mods & KeyNames.Ctrl) != 0) keys.Add("Ctrl");
         if ((mods & KeyNames.Shift) != 0) keys.Add("Shift");
         if ((mods & KeyNames.Alt) != 0) keys.Add("Alt");
@@ -85,6 +87,8 @@ internal sealed class ShortcutItem : Observable
             parts.Add(mapping.Name);
         if (mapping.Trigger.Kind == TriggerKind.Key && !mapping.BlockOriginal)
             parts.Add("The key also does its normal job");
+        if (mapping.ExcludedApps.Count > 0)
+            parts.Add("Off in " + string.Join(", ", mapping.ExcludedApps.Select(a => a.Name.Length > 0 ? a.Name : a.Exe)));
         Details = string.Join("  ·  ", parts);
     }
 
@@ -141,3 +145,14 @@ internal sealed class EventItem(ObservedInput observed, string? mappedTo)
 
 /// <summary>A keyboard filter pill on the Shortcuts page (null id = all shortcuts).</summary>
 internal sealed record FilterItem(string? Id, string Label);
+
+/// <summary>One app in an app list or in the app picker.</summary>
+internal sealed class AppRow(AppRef app, ImageSource? icon)
+{
+    public AppRef App { get; } = app;
+    public string Name => App.Name.Length > 0 ? App.Name : App.Exe;
+    public string Exe => App.Exe;
+    public ImageSource? Icon { get; } = icon;
+    public Visibility GlyphVisibility => Icon is null ? Visibility.Visible : Visibility.Collapsed;
+    public string RemoveLabel => $"Remove {Name}";
+}

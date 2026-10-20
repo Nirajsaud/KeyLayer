@@ -66,6 +66,27 @@ internal static unsafe class Native
     [DllImport("user32.dll")] public static extern bool ShowWindow(nint hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool IsIconic(nint hWnd);
 
+    // ---- Windows and the apps they belong to ----
+
+    public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    public const uint GW_OWNER = 4;
+    public const int GWL_EXSTYLE = -20, WS_EX_TOOLWINDOW = 0x80, DWMWA_CLOAKED = 14;
+
+    public delegate bool EnumWindowsProc(nint hWnd, nint lParam);
+
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(nint hWnd);
+    [DllImport("user32.dll")] public static extern nint GetWindow(nint hWnd, uint cmd);
+    [DllImport("user32.dll")] public static extern int GetWindowTextLength(nint hWnd);
+    [DllImport("user32.dll")] public static extern int GetWindowLong(nint hWnd, int index);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(nint hWnd, int attribute, void* value, int size);
+    [DllImport("kernel32.dll")] public static extern nint OpenProcess(uint access, bool inherit, uint processId);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(nint handle);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool QueryFullProcessImageName(nint process, uint flags, char* name, ref uint size);
+
     // ---- Raw input ----
 
     public const uint RIM_TYPEMOUSE = 0, RIM_TYPEKEYBOARD = 1, RIM_TYPEHID = 2;

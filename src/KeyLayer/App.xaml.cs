@@ -34,10 +34,12 @@ internal partial class App : Application
         DispatcherUnhandledException += OnUnhandledException;
 
         Config = store.Load();
+        KeyNames.CustomFnVk = Config.CustomFnVk;
         ApplyTheme(Config.Theme);
 
         Engine = new InputEngine(SynchronizationContext.Current!);
         Engine.SetMappings(Config.Mappings);
+        Engine.SetExcludedApps(Config.ExcludedApps);
         Engine.SetKeyboardNames(Config.KeyboardNames);
         Engine.CustomFnVk = Config.CustomFnVk;
         Engine.ActionFailed += (m, ex) => Notify($"“{m.Name}” didn't run", ex.Message, Forms.ToolTipIcon.Warning);
@@ -100,8 +102,9 @@ internal partial class App : Application
     {
         store.Save(Config);
         Engine.SetMappings(Config.Mappings);
+        Engine.SetExcludedApps(Config.ExcludedApps);
         Engine.SetKeyboardNames(Config.KeyboardNames);
-        Engine.CustomFnVk = Config.CustomFnVk;
+        Engine.CustomFnVk = KeyNames.CustomFnVk = Config.CustomFnVk;
     }
 
     public void ShowMain()

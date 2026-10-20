@@ -45,6 +45,13 @@ internal partial class ShortcutEditor : Window
         BuiltInBox.ItemsSource = ActionRunner.BuiltIns.Select(b => new BuiltInItem(b.Action, b.Name)).ToList();
         foreach (var key in ShortcutKeys()) KeyBox.Items.Add(key);
         RecordBox.Text = "Click here, then press the keys";
+        ExcludedList.Apps = [.. existing?.ExcludedApps ?? []];
+        if (app.Config.ExcludedApps.Count > 0)
+        {
+            AllAppsHint.Text = "Every shortcut is already off in " +
+                               string.Join(", ", app.Config.ExcludedApps.Select(a => a.Name.Length > 0 ? a.Name : a.Exe)) + " (see Settings).";
+            AllAppsHint.Visibility = Visibility.Visible;
+        }
 
         if (existing is not null)
         {
@@ -122,7 +129,9 @@ internal partial class ShortcutEditor : Window
             KeyCaptured.Visibility = Visibility.Collapsed;
             KeyEmptyIcon.Text = "";
             KeyPrompt.Text = "Click here, then press a key";
-            KeyPromptDetail.Text = "Any key or Fn combination. To use your custom Fn key, hold it while you press the other key.";
+            KeyPromptDetail.Text = app.Config.CustomFnVk != 0
+                ? $"Tip: hold {KeyNames.CustomFnName} (your Fn key) while you press a key. No app uses those combinations, so they never clash."
+                : "Any key or Fn combination. Fn and media keys like Mail or Calculator are the least likely to clash with other apps.";
             CaptureAction.Visibility = Visibility.Collapsed;
         }
         else
@@ -145,6 +154,7 @@ internal partial class ShortcutEditor : Window
         string? keyboard = fromSaved || app.Engine.Keyboards.Count(k => !k.IsReceiver) > 1 ? t.Keyboard : null;
         PopulateKeyboards(t, keyboard);
         UpdateWarning();
+        UpdateClash();
         UpdateBlockOption();
         UpdateNamePlaceholder();
     }
@@ -237,18 +247,60 @@ internal partial class ShortcutEditor : Window
         else ShowWarning(message);
     }
 
-    static string? WarningFor(Trigger t)
+    static string? WarningFor(Trigger t) =>
+        t is { Kind: TriggerKind.Hid, UsagePage: 0x01 }
+            ? "This is a system power signal. Windows will still do its own thing (like going to sleep), and that part can't be switched off."
+            : null;
+
+    /// <summary>Says whether the key takes over a shortcut Windows or other apps use, and offers a Fn-key combination instead.</summary>
+    void UpdateClash()
     {
-        if (t.Kind == TriggerKind.Hid)
-            return t.UsagePage == 0x01
-                ? "This is a system power signal. Windows will still do its own thing (like going to sleep), and that part can't be switched off."
-                : null;
-        if (KeyNames.IsSpecialKey(t.Vk) || (t.Modifiers & KeyNames.Fn) != 0) return null;
-        string key = KeyNames.Vk(t.Vk);
-        return t.Modifiers == 0
-            ? $"This sends an ordinary {key} key, so the shortcut also runs when you press {key} without Fn. " +
-              "If your keyboard has an Fn-lock (often Fn + Esc), switching it may make this key send a media signal instead."
-            : $"This sends the ordinary combination {t.Description}, so the shortcut also runs whenever you press {t.Description} yourself.";
+        if (trigger is null)
+        {
+            ClashBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var clash = ClashCheck.For(trigger);
+        ClashTitle.Text = clash.Title;
+        ClashText.Text = clash.Text;
+        var (background, foreground, glyph) = clash.Level switch
+        {
+            ClashLevel.Safe => ("SystemFillColorSuccessBackgroundBrush", "SystemFillColorSuccessBrush", ""),
+            ClashLevel.Windows => ("SystemFillColorCriticalBackgroundBrush", "SystemFillColorCriticalBrush", ""),
+            _ => ("SystemFillColorCautionBackgroundBrush", "SystemFillColorCautionBrush", ""),
+        };
+        ClashBar.SetResourceReference(Border.BackgroundProperty, background);
+        ClashIcon.SetResourceReference(TextBlock.ForegroundProperty, foreground);
+        ClashIcon.Text = glyph;
+        ClashBar.Visibility = Visibility.Visible;
+
+        if (clash.Level != ClashLevel.Safe && ClashCheck.FnAlternative(trigger, app.Config.CustomFnVk) is { } vk)
+        {
+            bool setUp = app.Config.CustomFnVk != 0;
+            string fn = setUp ? KeyNames.CustomFnName : KeyNames.Vk(KeyNames.SuggestedFnVk), key = KeyNames.Vk(vk);
+            UseFnText.Text = $"Use {fn} + {key} instead";
+            UseFnHint.Text = setUp
+                ? $"Hold {fn}, your Fn key, and press {key}. No app uses that, so it never clashes."
+                : $"This makes {fn} your Fn key: hold it and press {key}. No app uses that, so it never clashes. " +
+                  $"Pressed on its own, {fn} still works as normal. You can change this in Settings.";
+            FnSuggestion.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            FnSuggestion.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    void UseFn_Click(object sender, RoutedEventArgs e)
+    {
+        if (trigger is null || ClashCheck.FnAlternative(trigger, app.Config.CustomFnVk) is not { } vk) return;
+        if (app.Config.CustomFnVk == 0)
+        {
+            app.Config.CustomFnVk = KeyNames.SuggestedFnVk;
+            app.SaveConfig();
+        }
+        SetTrigger(Trigger.ForKey(vk, KeyNames.Fn));
     }
 
     void UpdateBlockOption()
@@ -465,6 +517,7 @@ internal partial class ShortcutEditor : Window
             BlockOriginal = effective.Kind == TriggerKind.Key && BlockBox.IsEnabled && BlockBox.IsChecked == true,
             Trigger = effective,
             Action = action,
+            ExcludedApps = ExcludedList.Apps,
         };
         DialogResult = true;
     }

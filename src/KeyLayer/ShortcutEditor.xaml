@@ -2,6 +2,7 @@
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KeyLayer"
         Title="Add shortcut" Width="680" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
 
@@ -77,6 +78,28 @@
                         <TextBlock Style="{StaticResource Icon}" Text="&#xE7BA;" Margin="0,1,12,0" VerticalAlignment="Top"
                                    Foreground="{DynamicResource SystemFillColorCautionBrush}" />
                         <TextBlock x:Name="WarningText" Style="{StaticResource Body}" />
+                    </DockPanel>
+                </Border>
+
+                <!-- Does this key take over a shortcut Windows or other apps use? -->
+                <Border x:Name="ClashBar" Style="{StaticResource InfoBar}" Margin="0,10,0,0" Visibility="Collapsed"
+                        AutomationProperties.LiveSetting="Polite">
+                    <DockPanel>
+                        <TextBlock x:Name="ClashIcon" Style="{StaticResource Icon}" Margin="0,1,12,0" VerticalAlignment="Top" />
+                        <StackPanel>
+                            <TextBlock x:Name="ClashTitle" Style="{StaticResource BodyStrong}" />
+                            <TextBlock x:Name="ClashText" Style="{StaticResource Body}" Margin="0,2,0,0" />
+                            <StackPanel x:Name="FnSuggestion" Margin="0,12,0,2" Visibility="Collapsed">
+                                <Button x:Name="UseFnButton" HorizontalAlignment="Left" Click="UseFn_Click" Padding="14,6"
+                                        Style="{StaticResource AccentButtonStyle}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE765;" FontSize="13" />
+                                        <TextBlock x:Name="UseFnText" Margin="8,0,0,0" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock x:Name="UseFnHint" Style="{StaticResource Caption}" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </StackPanel>
                     </DockPanel>
                 </Border>
 
@@ -206,6 +229,12 @@
                                 <TextBlock x:Name="BlockHint" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                             </StackPanel>
                         </DockPanel>
+                        <Rectangle Height="1" Margin="0,14" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                        <TextBlock Style="{StaticResource Body}" Text="Turn this shortcut off in these apps" />
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,10"
+                                   Text="In these apps the key does its normal job, so their own shortcuts keep working." />
+                        <local:AppList x:Name="ExcludedList" />
+                        <TextBlock x:Name="AllAppsHint" Style="{StaticResource Caption}" Margin="0,8,0,0" Visibility="Collapsed" />
                         <Rectangle Height="1" Margin="0,14" Fill="{DynamicResource DividerStrokeColorDefaultBrush}" />
                         <TextBlock Style="{StaticResource Body}" Text="Name (optional)" Margin="0,0,0,6" />
                         <Grid>

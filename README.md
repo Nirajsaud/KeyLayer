@@ -11,7 +11,11 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
 - **Per-keyboard shortcuts.** Every connected keyboard is listed, built-in included, and each shortcut can apply to all
   keyboards or just one.
 - **Your own Fn key.** Choose Caps Lock, Right Ctrl, Menu or similar. Hold it and press another key to run a shortcut;
-  tap it alone and it works as normal.
+  tap it alone and it works as normal. No app uses these combinations, so they never clash with app shortcuts.
+- **Clash check.** When you pick a key, KeyLayer tells you if Windows or common apps already use it (Ctrl + S, Win + E,
+  F5 …) and offers the same key on your Fn key instead.
+- **Turn shortcuts off in chosen apps.** List apps (games, Premiere Pro, Photoshop …) where every key does its normal
+  job, or turn off a single shortcut in some apps.
 - **Actions:** open an app, file, folder or website · press a key combination · type text · media and volume ·
   screen brightness · lock / sleep · screenshot, show desktop, task view and more · run a command · switch a key off.
 - **Test keys** page that shows exactly what each key press sends, and from which keyboard.
@@ -34,6 +38,17 @@ Settings are saved in `%APPDATA%\KeyLayer\config.json`.
 3. Pick a keyboard (or *Any keyboard*) and choose what it should do.
 
 To make your own Fn key, open **Settings** and pick a **Custom Fn key**. Then capture shortcuts while holding it.
+
+## Avoiding clashes with other apps
+
+A shortcut takes over its key in every app, and apps don't tell Windows which shortcuts they use. So:
+
+- Prefer keys no app uses: your **custom Fn key** + any key, Fn **media and launch keys** (Mail, Calculator …) and
+  F13–F24.
+- Watch the clash check in the shortcut editor. For a risky key it offers the same key on your Fn key in one click.
+- Use **Settings › Apps** to switch every shortcut off while certain apps are in front, or a shortcut's own
+  **Turn this shortcut off in these apps** option for just that one. Apps are matched by their program file
+  (e.g. `Adobe Premiere Pro.exe`).
 
 ## Good to know
 

@@ -42,6 +42,7 @@ internal partial class MainWindow : Window
         app.PausedChanged += UpdatePaused;
         activityTimer.Tick += (_, _) => FadeActivity();
         IsVisibleChanged += (_, _) => UpdateMonitor();
+        ExcludedAppsList.Changed += app.SaveConfig;
 
         LoadSettings();
         RefreshKeyboards();
@@ -157,7 +158,9 @@ internal partial class MainWindow : Window
     void AddShortcut(Trigger? preset)
     {
         var editor = new ShortcutEditor(app, null, [.. app.Config.Mappings], preset) { Owner = this };
-        if (editor.ShowDialog() != true || editor.Result is not { } mapping) return;
+        bool saved = editor.ShowDialog() == true;
+        AfterEditor();
+        if (!saved || editor.Result is not { } mapping) return;
         Store(null, mapping);
         ShowPage("Shortcuts");
     }
@@ -165,8 +168,17 @@ internal partial class MainWindow : Window
     void EditShortcut(Mapping current)
     {
         var editor = new ShortcutEditor(app, current, [.. app.Config.Mappings.Where(m => m != current)], null) { Owner = this };
-        if (editor.ShowDialog() != true || editor.Result is not { } updated) return;
+        bool saved = editor.ShowDialog() == true;
+        AfterEditor();
+        if (!saved || editor.Result is not { } updated) return;
         Store(current, updated);
+    }
+
+    /// <summary>The editor can set up the custom Fn key, which changes Settings and how keys are shown.</summary>
+    void AfterEditor()
+    {
+        LoadSettings();
+        RefreshShortcuts();
     }
 
     /// <summary>Adds or replaces a shortcut. Another shortcut on the same key is replaced (the editor warned about it).</summary>
@@ -355,6 +367,7 @@ internal partial class MainWindow : Window
         ThemeBox.SelectedIndex = app.Config.Theme switch { "Light" => 1, "Dark" => 2, _ => 0 };
         FnBox.ItemsSource = KeyNames.CustomFnChoices.Select(c => c.Name).ToList();
         FnBox.SelectedIndex = Math.Max(0, Array.FindIndex(KeyNames.CustomFnChoices, c => c.Vk == app.Config.CustomFnVk));
+        ExcludedAppsList.Apps = app.Config.ExcludedApps;
         VersionText.Text = $"KeyLayer {typeof(App).Assembly.GetName().Version?.ToString(3)}";
         ConfigPathText.Text = $"Your shortcuts are saved in {app.ConfigPath}";
         loading = false;
@@ -395,6 +408,7 @@ internal partial class MainWindow : Window
         if (loading || FnBox.SelectedIndex < 0) return;
         app.Config.CustomFnVk = KeyNames.CustomFnChoices[FnBox.SelectedIndex].Vk;
         app.SaveConfig();
+        RefreshShortcuts(); // keycaps show the Fn key by name
     }
 
     void GitHub_Click(object sender, RoutedEventArgs e) =>
