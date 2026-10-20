@@ -52,11 +52,45 @@ jobs:
           Get-Content $report
           if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
 
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          New-Item -ItemType Directory release -Force | Out-Null
+          & $iscc /Q "/DAppVersion=${{ steps.version.outputs.version }}" "/DSourceExe=$(Resolve-Path out/standalone/KeyLayer.exe)" "/O$(Resolve-Path release)" installer/KeyLayer.iss
+          if ($LASTEXITCODE -ne 0) { throw "The installer didn't build" }
+
+      # Install for this user, check the app and its Start menu shortcut, then uninstall and check it's all gone.
+      - name: Check the installer
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\KeyLayer install test"
+          $shortcut = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\KeyLayer.lnk"
+          $p = Start-Process release/KeyLayer-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=""$dir""", '/MERGETASKS="!startup"' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Setup failed with exit code $($p.ExitCode)" }
+          if (-not (Test-Path "$dir\KeyLayer.exe")) { throw "KeyLayer.exe wasn't installed" }
+          if (-not (Test-Path $shortcut)) { throw "No Start menu shortcut" }
+          $entry = Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object DisplayName -eq 'KeyLayer'
+          if (-not $entry) { throw "No uninstall entry in Settings > Apps" }
+          "Installed $($entry.DisplayVersion) to $dir"
+
+          $env:KEYLAYER_CONFIG = "$env:RUNNER_TEMP\config.json"
+          $t = Start-Process "$dir\KeyLayer.exe" -ArgumentList '--selftest', "$env:RUNNER_TEMP\installed.txt" -PassThru -Wait
+          if ($t.ExitCode -ne 0) { throw "The installed app didn't start" }
+
+          Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path "$dir\KeyLayer.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "$dir\KeyLayer.exe") { throw "Uninstall left KeyLayer.exe behind" }
+          if (Test-Path $shortcut) { throw "Uninstall left the Start menu shortcut behind" }
+          "Uninstalled cleanly"
+
       - name: Package
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
-          New-Item -ItemType Directory release | Out-Null
+          New-Item -ItemType Directory release -Force | Out-Null
           Compress-Archive out/standalone/KeyLayer.exe "release/KeyLayer-$v-win-x64.zip"
           Copy-Item out/small/KeyLayer.exe "release/KeyLayer-$v-win-x64-needs-dotnet.exe"
           Get-ChildItem release | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |

@@ -6,11 +6,21 @@ Got a laptop keyboard and an external one? Each can have its own shortcuts. No F
 
 ## Download
 
-Get the latest version from the [**Releases page**](https://github.com/Nirajsaud/KeyLayer/releases/latest):
+[![Download KeyLayer for Windows](https://img.shields.io/badge/Download-KeyLayer%20for%20Windows-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Nirajsaud/KeyLayer/releases/latest/download/KeyLayer-Setup.exe)
 
-- **`KeyLayer-…-win-x64.zip`**: unzip it anywhere and run `KeyLayer.exe`. Nothing else to install.
-- `KeyLayer-…-win-x64-needs-dotnet.exe`: a 1 MB version, if you already have the
+Run **`KeyLayer-Setup.exe`** and click through. It installs just for you (no admin rights needed), adds KeyLayer to
+the Start menu, can start it when you sign in, and can be removed any time from **Settings › Apps › Installed apps**.
+Nothing else needs installing.
+
+Other downloads are on the [Releases page](https://github.com/Nirajsaud/KeyLayer/releases/latest):
+
+- **Portable:** `KeyLayer-…-win-x64.zip`. Unzip it anywhere and run `KeyLayer.exe`; nothing is installed.
+  Keep it somewhere permanent (not Downloads) if you turn on *Start with Windows*.
+- **Small:** `KeyLayer-…-win-x64-needs-dotnet.exe`, 1 MB, if you already have the
   [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+
+Your shortcuts are kept in `%APPDATA%\KeyLayer`, so they survive updates. To update, just run the newer setup.
+When you uninstall, you're asked whether to delete them too.
 
 ### "Windows protected your PC"
 
@@ -22,7 +32,7 @@ complains, you can:
 
 - read what KeyLayer does with your key presses under [Privacy](#privacy) (nothing leaves your PC),
 - check that your download matches `SHA256SUMS.txt` on the release page:
-  `Get-FileHash KeyLayer-…-win-x64.zip` in PowerShell,
+  `Get-FileHash KeyLayer-Setup.exe` in PowerShell,
 - or [build it yourself](#building) from the source. Every release is built from this repository by
   [GitHub Actions](https://github.com/Nirajsaud/KeyLayer/actions), not on someone's PC.
 
@@ -110,7 +120,7 @@ KeyLayer sees every key you press, because that's how it works, so here's exactl
 ## Requirements
 
 - Windows 11, 64-bit (Windows 10 should work too, but it hasn't been tested much yet)
-- Nothing else for the `.zip` download. The small `needs-dotnet` exe needs the
+- Nothing else for the installer or the portable zip. The small `needs-dotnet` exe needs the
   [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ## Getting started
@@ -187,7 +197,9 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-The workflow builds both downloads, checks that the app starts, and publishes them with their checksums.
+The workflow builds the installer (from [`installer/KeyLayer.iss`](installer/KeyLayer.iss), with
+[Inno Setup](https://jrsoftware.org/isinfo.php)) and the other downloads, checks that the app starts and that it
+installs and uninstalls cleanly, and publishes everything with checksums.
 
 ## License
 

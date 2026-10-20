@@ -14,7 +14,7 @@
     <AssemblyName>KeyLayer</AssemblyName>
     <RootNamespace>KeyLayer</RootNamespace>
     <Product>KeyLayer</Product>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <!-- A tray app: no background GC thread, and keep the heap small rather than fast to grow -->
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
