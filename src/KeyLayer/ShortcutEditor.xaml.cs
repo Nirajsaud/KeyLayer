@@ -18,6 +18,7 @@ internal partial class ShortcutEditor : Window
     readonly IReadOnlyList<Mapping> others;
     readonly Dictionary<RadioButton, (ActionType Type, FrameworkElement Panel)> tiles;
     Trigger? trigger;
+    bool justPressed; // the key was pressed in this editor (not loaded from a saved shortcut)
     bool capturing;
     bool syncingShortcut;
     bool loadingKeyboards;
@@ -138,8 +139,10 @@ internal partial class ShortcutEditor : Window
             KeyEmptyIcon.Text = "";
             KeyPrompt.Text = "Click here, then press a key";
             KeyPromptDetail.Text = app.Config.CustomFnVk != 0
-                ? $"Tip: hold {KeyNames.CustomFnName} (your Fn key) while you press a key. No app uses those combinations, so they never clash."
-                : "Any key or Fn combination. Fn and media keys like Mail or Calculator are the least likely to clash with other apps.";
+                ? $"For Fn-style shortcuts, hold {KeyNames.CustomFnName} (your KeyLayer Fn key) while you press a key. " +
+                  "Your keyboard's own Fn key only works with keys that have a special job, like volume or Mail."
+                : "Your keyboard's own Fn key only works with keys that have a special job, like volume or Mail. " +
+                  "For other Fn-style shortcuts, set up a KeyLayer Fn key in Settings.";
             CaptureAction.Visibility = Visibility.Collapsed;
         }
         else
@@ -157,6 +160,7 @@ internal partial class ShortcutEditor : Window
     void SetTrigger(Trigger t, bool fromSaved = false)
     {
         trigger = t;
+        justPressed = !fromSaved;
         ShowKey();
         // A new capture is limited to the keyboard it came from only when there's more than one to choose between.
         string? keyboard = fromSaved || app.Engine.Keyboards.Count(k => !k.IsReceiver) > 1 ? t.Keyboard : null;
@@ -207,7 +211,7 @@ internal partial class ShortcutEditor : Window
         KeyboardBox.SelectedItem = items.FirstOrDefault(c => SameId(c.Id, select)) ?? items[0];
         KeyboardBox.IsEnabled = !hid && !customFn;
         KeyboardHint.Text = hid ? "This signal only comes from this device."
-            : customFn ? "Custom Fn shortcuts work on every keyboard."
+            : customFn ? "KeyLayer Fn shortcuts work on every keyboard."
             : "";
         KeyboardHint.Visibility = KeyboardHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         loadingKeyboards = false;
@@ -261,7 +265,7 @@ internal partial class ShortcutEditor : Window
         t is { Kind: TriggerKind.Hid, UsagePage: 0x01 }
             ? "This is a system power signal. Windows will still do its own thing (like going to sleep), and that part can't be switched off."
             : t.Kind == TriggerKind.Key && (t.Modifiers & KeyNames.Fn) != 0 && fnOff
-                ? "The custom Fn key is off, so this shortcut can't run. Pick a Fn key in Settings, or capture a different key."
+                ? "The KeyLayer Fn key is off, so this shortcut can't run. Pick one in Settings, or capture a different key."
                 : null;
 
     /// <summary>Says whether the key takes over a shortcut Windows or other apps use, and offers a Fn-key combination instead.</summary>
@@ -274,6 +278,16 @@ internal partial class ShortcutEditor : Window
         }
 
         var clash = ClashCheck.For(trigger);
+        // People hold their keyboard's Fn key and press a letter, but only the letter arrives: say so.
+        if (justPressed && trigger is { Kind: TriggerKind.Key, Modifiers: 0 } plain
+            && !KeyNames.IsSpecialKey(plain.Vk) && !KeyNames.IsModifier(plain.Vk))
+        {
+            string key = KeyNames.Vk(plain.Vk);
+            bool offer = ClashCheck.FnAlternative(plain, app.Config.CustomFnVk) is not null;
+            clash = new ClashInfo(ClashLevel.MightClash, "Did you hold Fn?",
+                $"Keyboards keep their Fn key to themselves, so only {key} arrived, and this shortcut would run every time " +
+                $"you press {key}." + (offer ? " For an Fn-style shortcut, use your KeyLayer Fn key instead:" : ""));
+        }
         ClashTitle.Text = clash.Title;
         ClashText.Text = clash.Text;
         var (background, foreground, glyph) = clash.Level switch
@@ -293,8 +307,8 @@ internal partial class ShortcutEditor : Window
             string fn = setUp ? KeyNames.CustomFnName : KeyNames.Vk(KeyNames.SuggestedFnVk), key = KeyNames.Vk(vk);
             UseFnText.Text = $"Use {fn} + {key} instead";
             UseFnHint.Text = setUp
-                ? $"Hold {fn}, your Fn key, and press {key}. No app uses that, so it never clashes."
-                : $"This makes {fn} your Fn key: hold it and press {key}. No app uses that, so it never clashes. " +
+                ? $"Hold {fn}, your KeyLayer Fn key, and press {key}. No app uses that, so it never clashes."
+                : $"This makes {fn} your KeyLayer Fn key: hold it and press {key}. No app uses that, so it never clashes. " +
                   $"Pressed on its own, {fn} still works as normal. You can change this in Settings.";
             FnSuggestion.Visibility = Visibility.Visible;
         }

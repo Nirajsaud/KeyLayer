@@ -96,7 +96,7 @@ internal sealed class ShortcutItem : Observable
             parts.Add("Off in " + string.Join(", ", mapping.ExcludedApps.Select(a => a.Name.Length > 0 ? a.Name : a.Exe)));
         Details = string.Join("  ·  ", parts);
         if (mapping.Trigger.Kind == TriggerKind.Key && (mapping.Trigger.Modifiers & KeyNames.Fn) != 0 && KeyNames.CustomFnVk == 0)
-            Warning = "Can't run: the custom Fn key is off. Pick one in Settings.";
+            Warning = "Can't run: the KeyLayer Fn key is off. Pick one in Settings.";
     }
 
     public Mapping Mapping { get; }

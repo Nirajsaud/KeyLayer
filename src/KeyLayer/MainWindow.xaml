@@ -242,7 +242,34 @@
                         </StackPanel>
                     </DockPanel>
 
-                    <WrapPanel x:Name="FilterPanel" Grid.Row="1" Margin="0,20,0,8" />
+                    <StackPanel Grid.Row="1">
+                        <!-- First start: the keyboard's own Fn key is invisible to apps, so offer a KeyLayer Fn key -->
+                        <Border x:Name="FnWelcome" Style="{StaticResource Card}" Margin="0,20,6,0" Padding="18,16"
+                                BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Collapsed">
+                            <DockPanel>
+                                <Border Style="{StaticResource IconTile}" VerticalAlignment="Top" Margin="0,0,16,0">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE765;" FontSize="20" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                </Border>
+                                <StackPanel>
+                                    <TextBlock x:Name="FnWelcomeTitle" Style="{StaticResource BodyStrong}" FontSize="15"
+                                               Text="Your keyboard's Fn key is invisible to apps" />
+                                    <TextBlock x:Name="FnWelcomeText" Style="{StaticResource Body}" Margin="0,4,0,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               Text="Keyboards keep their Fn key to themselves, so Fn + H arrives as just H. Pick a key to be your KeyLayer Fn key instead: hold it and press another key to run a shortcut. Pressed on its own, it still does its normal job." />
+                                    <WrapPanel x:Name="FnWelcomeButtons" Margin="0,14,0,0">
+                                        <Button Style="{StaticResource AccentButtonStyle}" Content="Use Caps Lock" Padding="14,6" Margin="0,0,8,0"
+                                                Click="FnWelcomeCaps_Click" />
+                                        <Button Content="Choose another key" Padding="14,6" Margin="0,0,8,0" Click="FnWelcomeChoose_Click" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="Not now" Padding="14,6" Click="FnWelcomeClose_Click" />
+                                    </WrapPanel>
+                                    <Button x:Name="FnWelcomeGotIt" Content="Got it" Padding="14,6" Margin="0,14,0,0"
+                                            HorizontalAlignment="Left" Visibility="Collapsed" Click="FnWelcomeClose_Click" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                        <WrapPanel x:Name="FilterPanel" Margin="0,20,0,8" />
+                    </StackPanel>
 
                     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,6,24">
                         <StackPanel>
@@ -254,7 +281,7 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <StackPanel x:Name="ShortcutsEmpty" Grid.Row="1" Grid.RowSpan="2" VerticalAlignment="Center"
+                    <StackPanel x:Name="ShortcutsEmpty" Grid.Row="2" VerticalAlignment="Center"
                                 HorizontalAlignment="Center" MaxWidth="440" Margin="0,0,0,70" Visibility="Collapsed">
                         <Border Style="{StaticResource IconTile}" Width="68" Height="68" CornerRadius="18" HorizontalAlignment="Center">
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE765;" FontSize="32" HorizontalAlignment="Center"
@@ -264,7 +291,7 @@
                                    Margin="0,18,0,8" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                         <TextBlock Style="{StaticResource Body}" TextAlignment="Center"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Text="Pick a key or Fn combination and choose what it should do. For shortcuts that never clash with other apps, use your Fn and media keys, or set up a custom Fn key in Settings." />
+                                   Text="Pick a key or Fn combination and choose what it should do. Shortcuts on your KeyLayer Fn key or on media keys like Mail never clash with other apps." />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0">
                             <Button Style="{StaticResource AccentButtonStyle}" Click="AddShortcut_Click" Padding="16,8">
                                 <StackPanel Orientation="Horizontal">
@@ -328,7 +355,7 @@
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE946;" Margin="0,1,12,0" VerticalAlignment="Top"
                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             <TextBlock Style="{StaticResource Body}"
-                                       Text="If an Fn combination shows nothing here, the keyboard handles it itself (usually backlight or lighting), and no app can change it." />
+                                       Text="The Fn key itself never shows up: keyboards keep it to themselves. Fn + a letter shows up as just the letter, and an Fn combination that shows nothing is handled inside the keyboard (usually backlight or lighting), so no app can change it." />
                         </DockPanel>
                     </Border>
                     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,6,24">
@@ -389,16 +416,16 @@
                             </DockPanel>
                         </Border>
 
-                        <TextBlock Style="{StaticResource SectionTitle}" Text="Custom Fn key" />
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="KeyLayer Fn key" />
                         <Border Style="{StaticResource SettingCard}">
                             <DockPanel>
                                 <ComboBox x:Name="FnBox" DockPanel.Dock="Right" Width="200" VerticalAlignment="Center"
-                                          SelectionChanged="FnBox_SelectionChanged" AutomationProperties.Name="Custom Fn key" />
+                                          SelectionChanged="FnBox_SelectionChanged" AutomationProperties.Name="KeyLayer Fn key" />
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE765;" Margin="4,0,18,0" />
                                 <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                    <TextBlock Style="{StaticResource Body}" Text="Use a key as your own Fn key" />
+                                    <TextBlock Style="{StaticResource Body}" Text="Pick a key to be your Fn key in KeyLayer" />
                                     <TextBlock Style="{StaticResource Caption}"
-                                               Text="Hold it and press another key to run a shortcut. No app uses these combinations, so they never clash with app shortcuts. Pressed on its own, the key does its normal job." />
+                                               Text="Your keyboard's own Fn key stays inside the keyboard, so apps can't see it. Hold this key instead and press another key to run a shortcut. No app uses these combinations, so they never clash. Pressed on its own, the key does its normal job." />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -421,11 +448,11 @@
                         <TextBlock Style="{StaticResource SectionTitle}" Text="Help" />
                         <Expander Header="Will my shortcuts clash with other apps' shortcuts?" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                             <TextBlock Style="{StaticResource Body}" Margin="4,4,4,8"
-                                       Text="A shortcut takes over its key in every app, and apps don't tell Windows which shortcuts they use. So the shortcut editor tells you when a key is likely to clash. Combinations with your custom Fn key, media keys like Mail, and F13 to F24 never clash. You can also turn shortcuts off in chosen apps: all of them under Apps above, or one at a time in a shortcut's options." />
+                                       Text="A shortcut takes over its key in every app, and apps don't tell Windows which shortcuts they use. So the shortcut editor tells you when a key is likely to clash. Combinations with your KeyLayer Fn key, media keys like Mail, and F13 to F24 never clash. You can also turn shortcuts off in chosen apps: all of them under Apps above, or one at a time in a shortcut's options." />
                         </Expander>
-                        <Expander Header="How does the Fn key work?" Margin="0,0,0,4" HorizontalAlignment="Stretch">
+                        <Expander Header="Why can't I use my keyboard's Fn key with any key?" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                             <TextBlock Style="{StaticResource Body}" Margin="4,4,4,8"
-                                       Text="Windows never sees the Fn key: the keyboard handles it itself. When you hold Fn and press another key, the keyboard sends a different signal instead, such as Volume Up, Mail or Calculator. KeyLayer listens for those signals and runs your action instead." />
+                                       Text="Windows never sees the Fn key: the keyboard handles it itself. Fn + a key with a special job (volume, Mail, Calculator …) sends that job as a signal, which KeyLayer can catch and give a new job. Fn + an ordinary key, like Fn + H, arrives as just H, so no app can tell it apart from H. For those, use the KeyLayer Fn key above: hold it instead of Fn." />
                         </Expander>
                         <Expander Header="Which Fn combinations can I change?" Margin="0,0,0,4" HorizontalAlignment="Stretch">
                             <TextBlock Style="{StaticResource Body}" Margin="4,4,4,8"

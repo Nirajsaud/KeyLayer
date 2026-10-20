@@ -10,19 +10,28 @@
 run it. Click **More info**, then **Run anyway**. KeyLayer is open source and sends nothing anywhere; see the
 [README](https://github.com/Nirajsaud/KeyLayer#privacy) for what it does with your key presses.
 
-## What's new in 1.2.1
+## What's new in 1.2.2
 
-- **An installer.** Download, run, done: KeyLayer goes into the Start menu, can start when you sign in, and can be
-  uninstalled from Settings like any other app. Updating keeps your shortcuts; uninstalling asks whether to keep them.
-- The zip is still here for anyone who prefers a portable app.
-- One less download to choose from: everything KeyLayer needs is built in, so there's nothing else to install.
+Your keyboard's own Fn key never reaches Windows (the keyboard handles it), so Fn + H arrives as just H. KeyLayer now
+makes that clear and points you to the fix:
+
+- **First start:** a card explains this and offers to make **Caps Lock** your **KeyLayer Fn key** in one click
+  (or pick another key).
+- **"Did you hold Fn?"** If you capture a plain key, the editor says what happened and offers *Use Caps Lock + H
+  instead*.
+- A tip in the key box before you press, clearer Test keys and Help text, and the setting is now called
+  **KeyLayer Fn key**.
+- Fix: trying a second copy of KeyLayer (like the portable zip) no longer takes over *Start with Windows* from your
+  installed copy.
+
+Updating from 1.2.1: run the new `KeyLayer-Setup.exe`. Your shortcuts are kept.
 
 ## What KeyLayer does
 
 Custom shortcuts for every keyboard on your PC, including the Fn keys.
 
 - Remap Fn and media keys (Mail, Calculator, Browser Home …) that Windows ignores, or any key or combination
-- Different shortcuts per keyboard (laptop and external), and your own Fn key (Caps Lock, Right Ctrl …)
+- Different shortcuts per keyboard (laptop and external), and a KeyLayer Fn key (Caps Lock, Right Ctrl …)
 - Actions: open apps, files and websites · press a key combination · act as another key while held · type text
   (typed, key by key, or pasted) · media, volume and brightness · window and desktop controls · run a command
 - Repeat while held, a clash check that warns about shortcuts Windows and apps already use, and lists of apps

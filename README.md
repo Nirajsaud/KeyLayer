@@ -40,8 +40,10 @@ complains, you can:
   ignores most of them unless a default app is set up. KeyLayer catches them and runs your action instead.
 - **Any key or combination** (a single key, or Ctrl / Shift / Alt / Win + a key), plus media, power and
   vendor-specific signals from external keyboards.
-- **Your own Fn key.** Make Caps Lock, Right Ctrl, Right Alt, Menu, Scroll Lock, Pause or Insert an Fn key. Hold it and
-  press another key to run a shortcut; tap it alone and it does its normal job.
+- **KeyLayer Fn key.** Your keyboard's own Fn key never reaches Windows, so Fn + H arrives as just H. Instead, make Caps
+  Lock, Right Ctrl, Right Alt, Menu, Scroll Lock, Pause or Insert KeyLayer's Fn key: hold it and press another key to run
+  a shortcut; tap it alone and it does its normal job. KeyLayer offers to set this up on first start, and if you capture
+  a plain key while holding the keyboard's Fn key, it asks "Did you hold Fn?" and offers the fix.
 - **Per keyboard.** Each shortcut works on every keyboard or just one, so the same key can do different things on your
   laptop and external keyboards.
 - **Key capture.** Click the key box and press the key; KeyLayer records it and the keyboard it came from.
@@ -74,7 +76,7 @@ complains, you can:
 ### Avoiding clashes with other apps
 - **Clash check:** a key you pick is rated *Won't clash*, *Might clash* or *Windows uses this*, with the reason
   (e.g. "Almost every app uses Ctrl + S to save").
-- **One-click fix:** "Use Caps Lock + S instead", which also sets up the Fn key if you don't have one yet.
+- **One-click fix:** "Use Caps Lock + S instead", which also sets up the KeyLayer Fn key if you don't have one yet.
 - **Turn every shortcut off in chosen apps** (games, Premiere Pro …), or **one shortcut** in chosen apps. Pick from the
   apps you have open, with their icons, or browse for a program. Store apps (Calculator, Photos …) are recognised one by
   one.
@@ -128,13 +130,14 @@ KeyLayer sees every key you press, because that's how it works, so here's exactl
 2. On **Shortcuts**, click **Add shortcut**, click the key box and press the key or combo.
 3. Pick a keyboard (or *Any keyboard*) and choose what it should do.
 
-To make your own Fn key, open **Settings** and pick a **Custom Fn key**. Then capture shortcuts while holding it.
+For shortcuts on ordinary keys, set up a **KeyLayer Fn key**: the first time you open KeyLayer it offers Caps Lock, or
+pick another key under **Settings › KeyLayer Fn key**. Then capture shortcuts while holding it.
 
 ## Avoiding clashes with other apps
 
 A shortcut takes over its key in every app, and apps don't tell Windows which shortcuts they use. So:
 
-- Prefer keys no app uses: your **custom Fn key** + any key, Fn **media and launch keys** (Mail, Calculator …) and
+- Prefer keys no app uses: your **KeyLayer Fn key** + any key, Fn **media and launch keys** (Mail, Calculator …) and
   F13–F24.
 - Watch the clash check in the shortcut editor. For a risky key it offers the same key on your Fn key in one click.
 - Use **Settings › Apps** to switch every shortcut off while certain apps are in front, or a shortcut's own
@@ -143,8 +146,9 @@ A shortcut takes over its key in every app, and apps don't tell Windows which sh
 
 ## Good to know
 
-- Windows never sees the Fn key itself; the keyboard handles it and sends a different signal instead. That's why only
-  combos that show up on the Test keys page can be remapped.
+- Windows never sees the Fn key itself; the keyboard handles it. Fn + a key with a special job (volume, Mail …) sends
+  that job as a signal, which KeyLayer can remap. Fn + an ordinary key arrives as just that key, so for those use the
+  KeyLayer Fn key. Only combos that show up on the Test keys page can be remapped.
 - All keyboards are detected at startup. A laptop's own keyboard and its hotkey devices are grouped as one
   **Built-in keyboard**. Mouse dongles that can also send keys are listed as **receivers**.
 - The same key can do different things on different keyboards. Windows only says which keyboard a key came from when

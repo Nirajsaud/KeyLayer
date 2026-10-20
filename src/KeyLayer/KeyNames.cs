@@ -57,7 +57,7 @@ internal static class KeyNames
 
     /// <summary>What the custom Fn key is called on keycaps: the chosen key's own name, e.g. "Caps Lock".</summary>
     public static string CustomFnName =>
-        CustomFnVk == 0 ? "Custom Fn" : CustomFnChoices.FirstOrDefault(c => c.Vk == CustomFnVk).Name ?? Vk(CustomFnVk);
+        CustomFnVk == 0 ? "KeyLayer Fn" : CustomFnChoices.FirstOrDefault(c => c.Vk == CustomFnVk).Name ?? Vk(CustomFnVk);
 
     /// <summary>The key offered as a custom Fn key when none is set up yet (Caps Lock).</summary>
     public const int SuggestedFnVk = 0x14;

@@ -118,6 +118,56 @@ internal partial class MainWindow : Window
         ShortcutsEmpty.Visibility = Show(none);
         FilterPanel.Visibility = Show(!none && FilterPanel.Children.Count > 2);
         FilterEmpty.Visibility = Show(!none && shortcuts.Count == 0);
+        UpdateFnWelcome();
+    }
+
+    // ------------------------------------------------------------------ KeyLayer Fn key welcome card
+
+    bool fnWelcomeDone; // showing "Caps Lock is now your KeyLayer Fn key"
+
+    /// <summary>Shown until a KeyLayer Fn key is picked or the card is closed.</summary>
+    void UpdateFnWelcome()
+    {
+        if (app.Config.CustomFnVk != 0 && !app.Config.FnWelcomeDismissed)
+        {
+            app.Config.FnWelcomeDismissed = true; // picked one somewhere else (Settings, or the shortcut editor)
+            app.SaveConfig();
+        }
+        FnWelcome.Visibility = Show(fnWelcomeDone || !app.Config.FnWelcomeDismissed);
+    }
+
+    void FnWelcomeCaps_Click(object sender, RoutedEventArgs e)
+    {
+        app.Config.CustomFnVk = KeyNames.SuggestedFnVk;
+        app.SaveConfig();
+        fnWelcomeDone = true;
+        FnWelcomeTitle.Text = "Caps Lock is now your KeyLayer Fn key";
+        FnWelcomeText.Text = "When you add a shortcut, hold Caps Lock and press another key. Pressed on its own, Caps Lock still " +
+                             "switches capital letters. You can pick a different key in Settings.";
+        FnWelcomeButtons.Visibility = Visibility.Collapsed;
+        FnWelcomeGotIt.Visibility = Visibility.Visible;
+        LoadSettings();
+        RefreshShortcuts();
+        FnWelcomeGotIt.Focus();
+    }
+
+    void FnWelcomeChoose_Click(object sender, RoutedEventArgs e)
+    {
+        ShowPage("Settings");
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            FnBox.BringIntoView();
+            FnBox.Focus();
+            FnBox.IsDropDownOpen = true;
+        }), DispatcherPriority.Loaded);
+    }
+
+    void FnWelcomeClose_Click(object sender, RoutedEventArgs e)
+    {
+        fnWelcomeDone = false;
+        app.Config.FnWelcomeDismissed = true;
+        app.SaveConfig();
+        UpdateFnWelcome();
     }
 
     void BuildFilters()

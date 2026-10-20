@@ -54,7 +54,7 @@ internal static class ClashCheck
         string key = KeyNames.Vk(vk);
 
         if ((mods & KeyNames.Fn) != 0)
-            return new(ClashLevel.Safe, NoClash, "Apps don't use your custom Fn key in their shortcuts, so this can't take over any of them.");
+            return new(ClashLevel.Safe, NoClash, "Apps don't use your KeyLayer Fn key in their shortcuts, so this can't take over any of them.");
         if (vk is >= 0x7C and <= 0x87)
             return new(ClashLevel.Safe, NoClash, "Hardly any app uses F13 to F24, so this is very unlikely to clash.");
         if (KeyNames.IsSpecialKey(vk))

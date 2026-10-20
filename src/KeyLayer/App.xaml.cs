@@ -73,7 +73,9 @@ internal partial class App : Application
         showWait = ThreadPool.RegisterWaitForSingleObject(showSignal,
             (_, _) => dispatcher.BeginInvoke(new Action(ShowMain)), null, -1, false);
 
-        if (StartupEnabled) SetStartup(true); // keep the path current if the exe was moved
+        // If the copy that starts with Windows was moved or deleted, start this one instead. Never take the
+        // entry over from a copy that's still there (an installed KeyLayer, when a portable one is tried out).
+        if (StartupEnabled && !File.Exists(StartupExe)) SetStartup(true);
 
         if (Engine.StartError is { } error)
             MessageBox.Show(error, "KeyLayer", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -186,6 +188,17 @@ internal partial class App : Application
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKey);
             return key?.GetValue(RunValue) is string;
+        }
+    }
+
+    /// <summary>The program the "start with Windows" entry runs, or "" when there's none.</summary>
+    static string StartupExe
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+            string command = key?.GetValue(RunValue) as string ?? "";
+            return command.StartsWith('"') && command.IndexOf('"', 1) is > 1 and var end ? command[1..end] : command.Split(' ')[0];
         }
     }
 

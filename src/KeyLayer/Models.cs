@@ -131,6 +131,9 @@ internal sealed class AppConfig
     /// <summary>Key held as a home-made Fn key (0 = off).</summary>
     public int CustomFnVk { get; set; }
 
+    /// <summary>The Shortcuts page card that explains the keyboard's own Fn key was closed (or a Fn key was picked).</summary>
+    public bool FnWelcomeDismissed { get; set; }
+
     /// <summary>"System", "Light" or "Dark".</summary>
     public string Theme { get; set; } = "System";
 

@@ -1174,7 +1174,7 @@ internal sealed unsafe class InputEngine : IDisposable
         var sb = new StringBuilder();
         sb.AppendLine($"KeyLayer {typeof(InputEngine).Assembly.GetName().Version} on {Environment.OSVersion}");
         sb.AppendLine($"Keyboard hook: {(hook != 0 ? "installed" : "NOT installed")}, put back {hookInstalls} times {StartError}");
-        sb.AppendLine($"Custom Fn key: {(CustomFnVk == 0 ? "off" : KeyNames.Vk(CustomFnVk))}");
+        sb.AppendLine($"KeyLayer Fn key: {(CustomFnVk == 0 ? "off" : KeyNames.Vk(CustomFnVk))}");
         sb.AppendLine($"Shortcuts off in: {(excludedApps.Count == 0 ? "no apps" : string.Join(", ", excludedApps))}");
         sb.AppendLine("Keyboards:");
         foreach (var k in Keyboards) sb.AppendLine($"  {k.Id,-10} {k.Connection,-13} {NameOf(k)}");
