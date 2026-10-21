@@ -172,7 +172,8 @@ A shortcut takes over its key in every app, and apps don't tell Windows which sh
 
 ## Building
 
-You need the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). New to the code? Start with
+[How KeyLayer works](docs/how-it-works.md), and run the [tests](tests/README.md) before and after a change.
 
 ```bash
 dotnet publish src/KeyLayer/KeyLayer.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist

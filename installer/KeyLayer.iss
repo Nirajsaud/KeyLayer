@@ -111,9 +111,10 @@ var
   Title, Body, Link: TNewStaticText;
   Keep, Delete: TNewButton;
 begin
-  // Keep this size: by default Inno Setup stretches custom windows to the wizard's size
+  // Keep this size: by default Inno Setup stretches custom windows to the wizard's size.
+  // From 6.6 on, CreateCustomForm scales the size it's given itself, so it gets the unscaled numbers.
 #if Ver >= EncodeVer(6, 6, 0)
-  Form := CreateCustomForm(ScaleX(460), ScaleY(214), True, True);
+  Form := CreateCustomForm(460, 214, True, True);
 #else
   Form := CreateCustomForm();
   Form.KeepSizeX := True;
